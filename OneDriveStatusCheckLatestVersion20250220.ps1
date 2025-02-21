@@ -74,6 +74,8 @@ try {
     # 出力フォルダの作成
     $outputFolderName = "OneDriveStatus." + (Get-Date -Format "yyyyMMdd")
     $outputPath = Join-Path $expectedPath $outputFolderName
+    
+    # フォルダが既に存在する場合は削除して再作成
     if (Test-Path $outputPath) {
         Remove-Item $outputPath -Recurse -Force
     }
@@ -137,31 +139,119 @@ try {
     $jsFilePath   = Join-Path $scriptPath ("${fileNameBase}.js")
 
     try {
-        Connect-MgGraph -Scopes "User.Read.All","Files.ReadWrite.All","Sites.Read.All"
-        Write-DetailLog "Microsoft Graph API へ接続できました。" -Level INFO
+        Write-Host "Microsoft Graph API への接続を開始します..." -ForegroundColor Yellow
+        
+        # 必要な権限スコープを定義（最小限に設定）
+        $requiredScopes = @(
+            "User.Read.All",            # ユーザー情報の読み取り
+            "Files.Read.All",           # OneDriveファイルの読み取り
+            "Files.ReadWrite.All",      # OneDriveファイルの読み書き
+            "Directory.Read.All"        # ディレクトリの読み取り
+        )
+
+        try {
+            # 既存の接続をクリーンアップ
+            Write-DetailLog "既存の接続をクリーンアップしています..." -Level INFO
+            Disconnect-MgGraph -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+
+            # 認証方法の選択
+            Write-Host "認証方法を選択してください：" -ForegroundColor Yellow
+            Write-Host "1: デバイスコード認証" -ForegroundColor Green
+            Write-Host "2: 対話型認証" -ForegroundColor Green
+            $authChoice = Read-Host "選択 (1 or 2)"
+
+            # Graph API接続
+            Write-DetailLog "Microsoft Graph API に接続しています..." -Level INFO
+            
+            if ($authChoice -eq "1") {
+                Connect-MgGraph -Scopes $requiredScopes -UseDeviceAuthentication
+            }
+            else {
+                Connect-MgGraph -Scopes $requiredScopes
+            }
+
+            # 接続確認
+            $context = Get-MgContext
+            if (-not $context) {
+                throw "認証コンテキストを取得できません。"
+            }
+
+            # スコープの確認
+            $missingScopes = $requiredScopes | Where-Object { $context.Scopes -notcontains $_ }
+            if ($missingScopes) {
+                Write-DetailLog "警告: 不足している権限があります:" -Level WARNING
+                $missingScopes | ForEach-Object {
+                    Write-DetailLog "- $_" -Level WARNING
+                }
+                Write-Host "続行しますか？ (Y/N)" -ForegroundColor Yellow
+                $response = Read-Host
+                if ($response -ne "Y") {
+                    Write-DetailLog "処理を中断します。" -Level INFO
+                    Exit 0
+                }
+            }
+
+            # 接続情報の表示
+            Write-DetailLog "接続アカウント情報:" -Level INFO
+            Write-DetailLog "- アカウント: $($context.Account)" -Level INFO
+            Write-DetailLog "- アプリケーション: $($context.AppName)" -Level INFO
+            Write-DetailLog "- テナント: $($context.TenantId)" -Level INFO
+        }
+        catch {
+            Write-DetailLog "認証に失敗しました: $($_.Exception.Message)" -Level ERROR
+            Write-DetailLog "エラーの詳細: $($_.Exception.StackTrace)" -Level ERROR
+            Exit 1
+        }
     }
     catch {
-        Write-DetailLog "Microsoft Graph API へ接続できませんでした。" -Level ERROR
+        Write-DetailLog "Microsoft Graph API への接続でエラーが発生しました: $($_.Exception.Message)" -Level ERROR
         Exit 1
     }
 
     function Get-OneDriveStatus {
-        param ([string]$userId)
+        param (
+            [string]$userId,
+            [int]$retryCount = 3,
+            [int]$retryDelaySeconds = 2
+        )
+        
         try {
-            $driveInfo = Get-MgUserDrive -UserId $userId -ErrorAction Stop
-            return $driveInfo
-        }
-        catch {
-            if ($_.Exception.Message -match "403") {
-                Write-DetailLog "ユーザー $userId のOneDrive へのアクセスが拒否されました(403)。" -Level WARNING
-                return $null
-            } elseif ($_.Exception.Message -match "accessDenied") {
-                Write-DetailLog "ユーザー $userId のOneDrive情報取得失敗: [accessDenied] : Access denied" -Level ERROR
-                return $null
-            } else {
-                Write-DetailLog "ユーザー $userId のOneDrive情報取得失敗: $($_.Exception.Message)" -Level ERROR
+            # まずユーザーの存在確認
+            $user = Get-MgUser -UserId $userId -ErrorAction Stop
+            if (-not $user) {
+                Write-DetailLog "ユーザー $userId が見つかりません。" -Level ERROR
                 return $null
             }
+
+            try {
+                # v1.0 APIでの取得を試行
+                $drive = Get-MgUserDrive -UserId $userId -ErrorAction Stop
+                Write-DetailLog "ユーザー $userId のOneDrive情報を取得しました。" -Level INFO
+                return $drive
+            }
+            catch {
+                Write-DetailLog "標準APIでの取得に失敗。代替方法を試行します..." -Level WARNING
+                
+                # 代替方法：RESTを直接使用
+                $apiUrl = "https://graph.microsoft.com/v1.0/users/$userId/drive"
+                $headers = @{
+                    "Authorization" = "Bearer $($context.AccessToken)"
+                    "Content-Type" = "application/json"
+                }
+                
+                $response = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get
+                Write-DetailLog "REST APIでユーザー $userId のOneDrive情報を取得しました。" -Level INFO
+                return $response
+            }
+        }
+        catch {
+            Write-DetailLog "OneDrive情報の取得に失敗: $($_.Exception.Message)" -Level ERROR
+            if ($_.Exception.Response) {
+                $errorResponse = $_.Exception.Response | ConvertTo-Json
+                Write-DetailLog "詳細なエラー情報: $errorResponse" -Level ERROR
+            }
+            return $null
         }
     }
 
