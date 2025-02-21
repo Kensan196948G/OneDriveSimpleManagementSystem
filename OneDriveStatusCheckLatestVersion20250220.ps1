@@ -91,7 +91,7 @@ try {
 
     # Microsoft Graph モジュールの確認とインストール関数
     function Install-RequiredModules {
-        $modules = @("Microsoft.Graph.Users", "Microsoft.Graph.Files")
+        $modules = @("Microsoft.Graph.Users", "Microsoft.Graph.Files", "Microsoft.Graph.Authentication")
         
         # セッションクリーンアップ
         Get-Module | Where-Object { $_.Name -like "Microsoft.Graph*" } | Remove-Module -Force
@@ -103,6 +103,7 @@ try {
             try {
                 # モジュールが既にインポートされているか確認
                 if (-not (Get-Module -Name $module)) {
+                    Install-Module -Name $module -Scope CurrentUser -Force -AllowClobber
                     Import-Module -Name $module -Force -DisableNameChecking -ErrorAction Stop
                     Write-DetailLog "モジュール $module を読み込みました。" -Level INFO
                 } else {
