@@ -70,8 +70,43 @@ if (-not (Test-Path $expectedPath)) {
 
 try {
     $ErrorActionPreference = "Continue"
+    # エラーログの初期化（スクリプト開始時に必ず実行）
+    if (-not $logFilePath) {
+        $outputFolderName = "OneDriveStatus." + (Get-Date -Format "yyyyMMdd")
+        $outputPath = Join-Path $expectedPath $outputFolderName
+        New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
+        $logFilePath = Join-Path $outputPath ("OneDriveStatus_" + (Get-Date -Format "yyyyMMddHHmmss") + ".log")
+    }
 
-    # 出力フォルダの作成
+    # エラーハンドリング関数の定義
+    function Write-ErrorLog {
+        param(
+            [System.Management.Automation.ErrorRecord]$Error,
+            [string]$CustomMessage
+        )
+        
+        Write-DetailLog "エラーが発生しました: $CustomMessage" -Level ERROR
+        Write-DetailLog "エラーの種類: $($Error.Exception.GetType().Name)" -Level ERROR
+        Write-DetailLog "エラーメッセージ: $($Error.Exception.Message)" -Level ERROR
+        Write-DetailLog "発生場所: $($Error.InvocationInfo.PositionMessage)" -Level ERROR
+        
+        if ($Error.Exception.InnerException) {
+            Write-DetailLog "内部エラー: $($Error.Exception.InnerException.Message)" -Level ERROR
+        }
+        
+        if ($Error.ScriptStackTrace) {
+            Write-DetailLog "スタックトレース:`n$($Error.ScriptStackTrace)" -Level ERROR
+        }
+    }
+
+    # グローバルエラーハンドラーの設定
+    $Global:ErrorActionPreference = "Continue"
+    trap {
+        Write-ErrorLog $_ "予期しないエラーが発生しました。"
+        continue
+    }
+
+    # 出力フォルダの作成（日付ベース）
     $outputFolderName = "OneDriveStatus." + (Get-Date -Format "yyyyMMdd")
     $outputPath = Join-Path $expectedPath $outputFolderName
     
@@ -80,16 +115,23 @@ try {
         Remove-Item $outputPath -Recurse -Force
     }
     New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
+    Write-DetailLog "出力フォルダを作成しました: $outputPath" -Level INFO
 
     # 実行時刻を使ってベースのファイル名を決定
     $scriptStartTime = Get-Date -Format "yyyyMMddHHmmss"
     $fileNameBase = "OneDriveStatus_${scriptStartTime}"
 
-    # 出力ファイルのパスを更新
+    # 出力ファイルのパスを設定（すべて出力フォルダ内に）
     $logFilePath = Join-Path $outputPath ("${fileNameBase}.log")
     $htmlFilePath = Join-Path $outputPath ("${fileNameBase}.html")
     $csvFilePath = Join-Path $outputPath ("${fileNameBase}.csv")
     $jsFilePath = Join-Path $outputPath ("${fileNameBase}.js")
+
+    Write-DetailLog "出力ファイルの設定:" -Level INFO
+    Write-DetailLog "- ログ: $logFilePath" -Level INFO
+    Write-DetailLog "- HTML: $htmlFilePath" -Level INFO
+    Write-DetailLog "- CSV: $csvFilePath" -Level INFO
+    Write-DetailLog "- JS: $jsFilePath" -Level INFO
 
     # Microsoft Graph モジュールの確認とインストール関数
     function Install-RequiredModules {
@@ -141,68 +183,115 @@ try {
     try {
         Write-Host "Microsoft Graph API への接続を開始します..." -ForegroundColor Yellow
         
-        # 必要な権限スコープを定義（最小限に設定）
+        # OneDrive関連の必要なスコープを定義
         $requiredScopes = @(
-            "User.Read.All",            # ユーザー情報の読み取り
-            "Files.Read.All",           # OneDriveファイルの読み取り
-            "Files.ReadWrite.All",      # OneDriveファイルの読み書き
-            "Directory.Read.All"        # ディレクトリの読み取り
+            # 基本的な権限
+            "User.Read.All",                # ユーザー情報の読み取り
+            "Directory.Read.All",           # ディレクトリの読み取り
+
+            # OneDriveファイルアクセス権限
+            "Files.Read.All",              # すべてのファイルの読み取り
+            "Files.ReadWrite.All",         # すべてのファイルの読み書き
+            "Files.Read.Selected",         # 選択したファイルの読み取り
+            "Files.ReadWrite.Selected",    # 選択したファイルの読み書き
+            "Files.ReadWrite.AppFolder",   # アプリフォルダーのファイル読み書き
+
+            # SharePointサイトアクセス権限
+            "Sites.Read.All",             # すべてのサイトの読み取り
+            "Sites.ReadWrite.All",        # すべてのサイトの読み書き
+            "Sites.Manage.All",           # すべてのサイトの管理
+            "Sites.FullControl.All",      # すべてのサイトの完全制御
+            "Sites.Selected"              # 選択したサイトへのアクセス
         )
 
+        # 既存のパーミッションチェックと安全な接続処理
+        function Connect-MgGraphSafely {
+            param (
+                [array]$RequiredScopes
+            )
+
+            try {
+                Write-DetailLog "認証プロセスを開始します..." -Level INFO
+                Write-DetailLog "グローバル管理者アカウントでサインインしてください。" -Level INFO
+                Write-DetailLog "1. Microsoftアカウント（例: username@mirai-const.co.jp）を入力" -Level INFO
+                Write-DetailLog "2. HENGEONEのパスワードを入力" -Level INFO
+                
+                # 既存の接続を確認
+                $existingContext = Get-MgContext
+                if ($existingContext) {
+                    Write-DetailLog "既存の接続を検出: $($existingContext.Account)" -Level INFO
+                    
+                    # ユーザーの役割を確認
+                    try {
+                        $currentUser = Get-MgUser -UserId $existingContext.Account -ErrorAction Stop
+                        Write-DetailLog "現在のユーザー: $($currentUser.DisplayName)" -Level INFO
+                        
+                        # 既存のスコープで十分か確認
+                        $missingScopes = $RequiredScopes | Where-Object { $existingContext.Scopes -notcontains $_ }
+                        if (-not $missingScopes) {
+                            Write-DetailLog "必要な権限はすべて付与されています。" -Level INFO
+                            return $existingContext
+                        }
+                        
+                        Write-DetailLog "追加の権限が必要です。再認証を行います..." -Level INFO
+                    }
+                    catch {
+                        Write-DetailLog "ユーザー情報の取得に失敗しました。再認証を行います..." -Level WARNING
+                    }
+                    
+                    Disconnect-MgGraph -ErrorAction SilentlyContinue
+                    Start-Sleep -Seconds 2
+                }
+
+                # 認証方法の選択
+                Write-Host "`n認証方法を選択してください：" -ForegroundColor Yellow
+                Write-Host "1: 通常の認証（推奨）- Microsoftアカウントとパスワードを入力" -ForegroundColor Green
+                Write-Host "2: デバイスコード認証 - コードを使用して別デバイスで認証" -ForegroundColor Green
+                $authChoice = Read-Host "`n選択 (1 or 2)"
+
+                # 認証パラメータの設定
+                $connectParams = @{
+                    Scopes = $RequiredScopes
+                    ErrorAction = "Stop"
+                }
+
+                if ($authChoice -eq "2") {
+                    $connectParams["UseDeviceAuthentication"] = $true
+                }
+
+                # 認証を実行
+                Connect-MgGraph @connectParams
+                $newContext = Get-MgContext
+
+                if (-not $newContext) {
+                    throw "認証コンテキストを取得できません。"
+                }
+
+                Write-DetailLog "認証成功: $($newContext.Account)" -Level INFO
+                return $newContext
+            }
+            catch {
+                Write-DetailLog "認証プロセスでエラーが発生しました: $($_.Exception.Message)" -Level ERROR
+                throw
+            }
+        }
+
+        # 安全な接続を実行
         try {
-            # 既存の接続をクリーンアップ
-            Write-DetailLog "既存の接続をクリーンアップしています..." -Level INFO
-            Disconnect-MgGraph -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-
-            # 認証方法の選択
-            Write-Host "認証方法を選択してください：" -ForegroundColor Yellow
-            Write-Host "1: デバイスコード認証" -ForegroundColor Green
-            Write-Host "2: 対話型認証" -ForegroundColor Green
-            $authChoice = Read-Host "選択 (1 or 2)"
-
-            # Graph API接続
-            Write-DetailLog "Microsoft Graph API に接続しています..." -Level INFO
-            
-            if ($authChoice -eq "1") {
-                Connect-MgGraph -Scopes $requiredScopes -UseDeviceAuthentication
-            }
-            else {
-                Connect-MgGraph -Scopes $requiredScopes
-            }
-
-            # 接続確認
-            $context = Get-MgContext
-            if (-not $context) {
-                throw "認証コンテキストを取得できません。"
-            }
-
-            # スコープの確認
-            $missingScopes = $requiredScopes | Where-Object { $context.Scopes -notcontains $_ }
-            if ($missingScopes) {
-                Write-DetailLog "警告: 不足している権限があります:" -Level WARNING
-                $missingScopes | ForEach-Object {
-                    Write-DetailLog "- $_" -Level WARNING
-                }
-                Write-Host "続行しますか？ (Y/N)" -ForegroundColor Yellow
-                $response = Read-Host
-                if ($response -ne "Y") {
-                    Write-DetailLog "処理を中断します。" -Level INFO
-                    Exit 0
-                }
-            }
-
-            # 接続情報の表示
-            Write-DetailLog "接続アカウント情報:" -Level INFO
-            Write-DetailLog "- アカウント: $($context.Account)" -Level INFO
-            Write-DetailLog "- アプリケーション: $($context.AppName)" -Level INFO
-            Write-DetailLog "- テナント: $($context.TenantId)" -Level INFO
+            $context = Connect-MgGraphSafely -RequiredScopes $requiredScopes
         }
         catch {
-            Write-DetailLog "認証に失敗しました: $($_.Exception.Message)" -Level ERROR
-            Write-DetailLog "エラーの詳細: $($_.Exception.StackTrace)" -Level ERROR
-            Exit 1
+            Write-ErrorLog $_ "Microsoft Graph API への接続に失敗しました。"
+            throw
         }
+
+        # 接続情報を表示
+        Write-DetailLog "接続アカウント情報:" -Level INFO
+        Write-DetailLog "- アカウント: $($context.Account)" -Level INFO
+        Write-DetailLog "- アプリケーション: $($context.AppName)" -Level INFO
+        Write-DetailLog "- テナント: $($context.TenantId)" -Level INFO
+        Write-DetailLog "- トークン有効期限: $($context.ExpiresOn)" -Level INFO
+
     }
     catch {
         Write-DetailLog "Microsoft Graph API への接続でエラーが発生しました: $($_.Exception.Message)" -Level ERROR
@@ -246,11 +335,7 @@ try {
             }
         }
         catch {
-            Write-DetailLog "OneDrive情報の取得に失敗: $($_.Exception.Message)" -Level ERROR
-            if ($_.Exception.Response) {
-                $errorResponse = $_.Exception.Response | ConvertTo-Json
-                Write-DetailLog "詳細なエラー情報: $errorResponse" -Level ERROR
-            }
+            Write-ErrorLog $_ "ユーザー $userId のOneDrive情報取得に失敗しました。"
             return $null
         }
     }
@@ -520,10 +605,18 @@ $(document).ready(function() {
     Write-Host "  JS  : $jsFilePath" -ForegroundColor Cyan
 }
 catch {
-    Write-DetailLog "エラーが発生しました: $($_.Exception.Message)" -Level ERROR
+    Write-ErrorLog $_ "スクリプトの実行中にエラーが発生しました。"
     throw
 }
 finally {
+    # 終了処理でのエラー情報の要約
+    if ($Error.Count -gt 0) {
+        Write-DetailLog "`n==== エラーサマリー ====" -Level ERROR
+        Write-DetailLog "発生したエラーの総数: $($Error.Count)" -Level ERROR
+        Write-DetailLog "詳細なエラーログは以下のファイルを確認してください:" -Level ERROR
+        Write-DetailLog $logFilePath -Level ERROR
+    }
+    
     Restore-OriginalEncoding
     Write-Host "" -ForegroundColor Yellow
     Write-Host "エンコーディングを元に戻しました。Enterキーを押して終了します..." -ForegroundColor Yellow

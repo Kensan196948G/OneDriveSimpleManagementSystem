@@ -1,0 +1,9 @@
+﻿[2025-02-22 19:49:57] [INFO] 出力フォルダを作成しました: C:\kitting\OneDrive運用ツール\OneDriveStatus.20250222
+[2025-02-22 19:49:57] [INFO] 出力ファイルの設定:
+[2025-02-22 19:49:57] [INFO] - ログ: C:\kitting\OneDrive運用ツール\OneDriveStatus.20250222\OneDriveStatus_20250222194957.log
+[2025-02-22 19:49:57] [INFO] - HTML: C:\kitting\OneDrive運用ツール\OneDriveStatus.20250222\OneDriveStatus_20250222194957.html
+[2025-02-22 19:49:57] [INFO] - CSV: C:\kitting\OneDrive運用ツール\OneDriveStatus.20250222\OneDriveStatus_20250222194957.csv
+[2025-02-22 19:49:57] [INFO] - JS: C:\kitting\OneDrive運用ツール\OneDriveStatus.20250222\OneDriveStatus_20250222194957.js
+[2025-02-22 19:50:49] [INFO] モジュール Microsoft.Graph.Users を読み込みました。
+[2025-02-22 19:51:48] [INFO] モジュール Microsoft.Graph.Files を読み込みました。
+[2025-02-22 19:51:48] [INFO] モジュール Microsoft.Graph.Authentication は既に読み込まれています。
