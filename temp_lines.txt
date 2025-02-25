@@ -1,0 +1,3 @@
+﻿                        Write-DetailLog "REST API蜻ｼ縺ｳ蜃ｺ縺苓ｩｦ陦・$i/$retryCount: $apiUrl" -Level INFO
+                        $response = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get -ErrorAction Stop
+                        Write-DetailLog "REST API縺ｧ繝ｦ繝ｼ繧ｶ繝ｼ $userId 縺ｮOneDrive諠・ｱ繧貞叙蠕励＠縺ｾ縺励◆縲・ -Level INFO
