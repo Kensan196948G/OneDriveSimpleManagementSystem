@@ -1,238 +1,216 @@
 #
 # 文字コード変換ツール
-# 文字化けの解決をサポートするためのPowerShellスクリプト
+# PowerShell スクリプトの文字コード問題を解決するためのユーティリティ
 #
+# 使用法:
+#   .\CharacterEncodingTool.ps1 -InputFile "変換したいファイル.ps1" -SourceEncoding "shift-jis" -TargetEncoding "utf-8"
+#
+# パラメーター:
+#   -InputFile      : 変換するファイルのパス
+#   -SourceEncoding : 元の文字コード (省略時は自動検出)
+#   -TargetEncoding : 変換後の文字コード (デフォルト: utf-8)
+#   -BOM            : BOMの有無 (デフォルト: $true)
 
-# パラメータ定義
 param (
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $true)]
     [string]$InputFile,
     
-    [Parameter(Mandatory=$false)]
-    [string]$OutputFile,
+    [Parameter(Mandatory = $false)]
+    [string]$SourceEncoding = "auto",
     
-    [Parameter(Mandatory=$false)]
-    [string]$SourceEncoding = "utf-8",
-    
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [string]$TargetEncoding = "utf-8",
     
-    [Parameter(Mandatory=$false)]
-    [switch]$BOM = $false,
-    
-    [switch]$Detect = $false,
-    
-    [switch]$ShowHelp = $false
+    [Parameter(Mandatory = $false)]
+    [bool]$BOM = $true
 )
 
-# ヘルプを表示
-function Show-Help {
-    Write-Host "文字コード変換ツール - 使用方法:"
-    Write-Host "CharacterEncodingTool.ps1 -InputFile <ファイルパス> [-OutputFile <出力パス>] [-SourceEncoding <元の文字コード>] [-TargetEncoding <変換後の文字コード>] [-BOM] [-Detect]"
-    Write-Host ""
-    Write-Host "パラメータ:"
-    Write-Host "  -InputFile       : 変換するファイル"
-    Write-Host "  -OutputFile      : 出力ファイル (省略時は元のファイルを上書き)"
-    Write-Host "  -SourceEncoding  : 元の文字コード (省略時はUTF-8)"
-    Write-Host "  -TargetEncoding  : 変換後の文字コード (省略時はUTF-8)"
-    Write-Host "  -BOM             : UTF-8の場合、BOMを付与する"
-    Write-Host "  -Detect          : ファイルの文字コードを検出して表示"
-    Write-Host "  -ShowHelp        : このヘルプを表示"
-    Write-Host ""
-    Write-Host "使用可能な文字コード: utf-8, shift-jis, euc-jp, iso-2022-jp, ascii, unicode"
-    Write-Host ""
-    Write-Host "使用例:"
-    Write-Host "  1. ファイルの文字コードを検出:"
-    Write-Host "     .\CharacterEncodingTool.ps1 -InputFile file.txt -Detect"
-    Write-Host ""
-    Write-Host "  2. Shift-JISからUTF-8(BOMなし)に変換:"
-    Write-Host "     .\CharacterEncodingTool.ps1 -InputFile file.txt -SourceEncoding shift-jis -TargetEncoding utf-8"
-    Write-Host ""
-    Write-Host "  3. Shift-JISからUTF-8(BOMあり)に変換:"
-    Write-Host "     .\CharacterEncodingTool.ps1 -InputFile file.txt -SourceEncoding shift-jis -TargetEncoding utf-8 -BOM"
+# ファイルの存在確認
+if (-not (Test-Path $InputFile)) {
+    Write-Host "エラー: ファイル '$InputFile' が見つかりません。" -ForegroundColor Red
+    exit 1
 }
 
-# エンコーディングを正規化する関数
-function Convert-EncodingName {
-    param(
-        [string]$EncodingName
-    )
-    
-    switch ($EncodingName.ToLower()) {
-        "utf-8" { return "utf-8" }
-        "utf8" { return "utf-8" }
-        "shift_jis" { return "shift-jis" }
-        "sjis" { return "shift-jis" }
-        "ascii" { return "ascii" }
-        "unicode" { return "unicode" }
-        default { return $EncodingName }
-    }
-}
-
-# 文字コード検出の試行
-function Detect-Encoding {
+function Detect-FileEncoding {
     param (
         [string]$FilePath
     )
     
-    if (-not (Test-Path $FilePath -PathType Leaf)) {
-        Write-Host "ファイルが見つかりません: $FilePath" -ForegroundColor Red
-        return
-    }
-    
-    $encodings = @(
-        [System.Text.Encoding]::UTF8,
-        [System.Text.Encoding]::GetEncoding("shift-jis"),
-        [System.Text.Encoding]::GetEncoding("euc-jp"),
-        [System.Text.Encoding]::GetEncoding("iso-2022-jp"),
-        [System.Text.Encoding]::ASCII,
-        [System.Text.Encoding]::Unicode
-    )
-    
+    # ファイルの先頭部分を読み込む
     $bytes = [System.IO.File]::ReadAllBytes($FilePath)
     
-    # BOM（Byte Order Mark）の確認
-    $hasBOM = $false
+    # BOM チェック
     if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
-        $hasBOM = $true
-        Write-Host "UTF-8 BOMが検出されました。" -ForegroundColor Cyan
-    }
-    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
-        Write-Host "Unicode (UTF-16 LE) BOMが検出されました。" -ForegroundColor Cyan
+        return @{Encoding = "utf-8"; BOM = $true; Confidence = 100}
     }
     elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
-        Write-Host "Unicode (UTF-16 BE) BOMが検出されました。" -ForegroundColor Cyan
+        return @{Encoding = "utf-16BE"; BOM = $true; Confidence = 100}
+    }
+    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+        return @{Encoding = "utf-16"; BOM = $true; Confidence = 100}
     }
     
-    $results = @()
+    # 文字コードの推測
+    $content = [System.IO.File]::ReadAllBytes($FilePath)
     
-    foreach ($encoding in $encodings) {
-        try {
-            $decodedString = $encoding.GetString($bytes)
-            $reEncodedBytes = $encoding.GetBytes($decodedString)
-            
-            # BOMを考慮して比較
-            $matchCount = 0
-            $compareLength = [Math]::Min($bytes.Length, $reEncodedBytes.Length)
-            
-            for ($i = 0; $i -lt $compareLength; $i++) {
-                if ($bytes[$i] -eq $reEncodedBytes[$i]) {
-                    $matchCount++
-                }
-            }
-            
-            $confidencePercent = [Math]::Round(($matchCount / $compareLength) * 100, 2)
-            
-            $encodingName = $encoding.WebName
-            if ($encodingName -eq "utf-8" -and $hasBOM) {
-                $encodingName = "utf-8 (BOMあり)"
-            }
-            
-            $results += [PSCustomObject]@{
-                Encoding = $encodingName
-                Confidence = $confidencePercent
-            }
-        }
-        catch {
-            # エラーが発生した場合は無視
+    # ASCII チェック
+    $isASCII = $true
+    foreach ($byte in $content) {
+        if ($byte -gt 127) {
+            $isASCII = $false
+            break
         }
     }
     
-    # 信頼度でソート
-    $results = $results | Sort-Object -Property Confidence -Descending
+    if ($isASCII) {
+        return @{Encoding = "ascii"; BOM = $false; Confidence = 90}
+    }
     
-    Write-Host "検出された可能性のある文字コード:" -ForegroundColor Cyan
-    $results | Format-Table -AutoSize
+    # UTF-8 チェック (BOMなし)
+    $isUTF8 = $true
+    $i = 0
+    while ($i -lt $content.Length) {
+        if ($content[$i] -lt 128) {
+            $i++
+            continue
+        }
+        
+        # UTF-8の複数バイト文字を検出
+        if (($content[$i] -ge 0xC2 -and $content[$i] -le 0xDF) -and
+            ($i + 1 -lt $content.Length) -and
+            ($content[$i + 1] -ge 0x80 -and $content[$i + 1] -le 0xBF)) {
+            $i += 2
+        }
+        elseif (($content[$i] -ge 0xE0 -and $content[$i] -le 0xEF) -and
+                ($i + 2 -lt $content.Length) -and
+                ($content[$i + 1] -ge 0x80 -and $content[$i + 1] -le 0xBF) -and
+                ($content[$i + 2] -ge 0x80 -and $content[$i + 2] -le 0xBF)) {
+            $i += 3
+        }
+        elseif (($content[$i] -ge 0xF0 -and $content[$i] -le 0xF7) -and
+                ($i + 3 -lt $content.Length) -and
+                ($content[$i + 1] -ge 0x80 -and $content[$i + 1] -le 0xBF) -and
+                ($content[$i + 2] -ge 0x80 -and $content[$i + 2] -le 0xBF) -and
+                ($content[$i + 3] -ge 0x80 -and $content[$i + 3] -le 0xBF)) {
+            $i += 4
+        }
+        else {
+            $isUTF8 = $false
+            break
+        }
+    }
     
-    return $results[0].Encoding
+    if ($isUTF8) {
+        return @{Encoding = "utf-8"; BOM = $false; Confidence = 85}
+    }
+    
+    # Shift-JIS または EUC-JP の可能性をチェック
+    $sjisCount = 0
+    $eucjpCount = 0
+    
+    $i = 0
+    while ($i -lt $content.Length - 1) {
+        # Shift-JIS の特徴をチェック
+        if (($content[$i] -ge 0x81 -and $content[$i] -le 0x9F) -or
+            ($content[$i] -ge 0xE0 -and $content[$i] -le 0xFC)) {
+            if (($content[$i + 1] -ge 0x40 -and $content[$i + 1] -le 0xFC) -and
+                $content[$i + 1] -ne 0x7F) {
+                $sjisCount++
+                $i += 2
+                continue
+            }
+        }
+        
+        # EUC-JP の特徴をチェック
+        if ($content[$i] -ge 0x8E -and $content[$i] -le 0xFE) {
+            if ($content[$i + 1] -ge 0xA1 -and $content[$i + 1] -le 0xFE) {
+                $eucjpCount++
+                $i += 2
+                continue
+            }
+        }
+        
+        $i++
+    }
+    
+    if ($sjisCount -gt $eucjpCount) {
+        return @{Encoding = "shift-jis"; BOM = $false; Confidence = 75}
+    }
+    elseif ($eucjpCount -gt $sjisCount) {
+        return @{Encoding = "euc-jp"; BOM = $false; Confidence = 75}
+    }
+    
+    # デフォルトは Shift-JIS (日本環境で最も一般的)
+    return @{Encoding = "shift-jis"; BOM = $false; Confidence = 60}
 }
 
 # メイン処理
-if ($ShowHelp) {
-    Show-Help
-    exit 0
-}
-
-if (-not $InputFile) {
-    Write-Host "入力ファイルを指定してください。" -ForegroundColor Yellow
-    Show-Help
-    exit 1
-}
-
-if (-not (Test-Path $InputFile -PathType Leaf)) {
-    Write-Host "ファイルが見つかりません: $InputFile" -ForegroundColor Red
-    exit 1
-}
-
-if ($Detect) {
-    Detect-Encoding -FilePath $InputFile
-    exit 0
-}
-
-if (-not $OutputFile) {
-    $OutputFile = $InputFile
-}
-
-# ソースエンコーディング名の正規化
-$normalizedSourceEncoding = Convert-EncodingName -EncodingName $SourceEncoding
-
-# ターゲットエンコーディング名の正規化
-$normalizedTargetEncoding = Convert-EncodingName -EncodingName $TargetEncoding
-
 try {
-    Write-Host "ファイル変換開始: $InputFile" -ForegroundColor Cyan
-    Write-Host "元の文字コード: $normalizedSourceEncoding" -ForegroundColor Cyan
-    Write-Host "変換後の文字コード: $normalizedTargetEncoding" -ForegroundColor Cyan
+    # 文字コードの自動検出
+    if ($SourceEncoding -eq "auto") {
+        $encodingInfo = Detect-FileEncoding -FilePath $InputFile
+        $SourceEncoding = $encodingInfo.Encoding
+        Write-Host "ファイルを分析中: $InputFile" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "検出された文字コード: $($SourceEncoding) (信頼度: $($encodingInfo.Confidence)%)" -ForegroundColor Yellow
+        Write-Host ""
+    }
     
-    if ($normalizedTargetEncoding -eq "utf-8" -and $BOM) {
-        Write-Host "UTF-8 BOMを付与します" -ForegroundColor Cyan
+    # 入力エンコーディングの設定
+    $srcEncoding = switch ($SourceEncoding.ToLower()) {
+        "utf-8"     { [System.Text.Encoding]::UTF8 }
+        "utf-16"    { [System.Text.Encoding]::Unicode }
+        "utf-16be"  { [System.Text.Encoding]::BigEndianUnicode }
+        "shift-jis" { [System.Text.Encoding]::GetEncoding(932) }
+        "euc-jp"    { [System.Text.Encoding]::GetEncoding(51932) }
+        "ascii"     { [System.Text.Encoding]::ASCII }
+        default     { [System.Text.Encoding]::UTF8 }
+    }
+    
+    # 出力エンコーディングの設定
+    $dstEncoding = switch ($TargetEncoding.ToLower()) {
+        "utf-8"     { New-Object System.Text.UTF8Encoding($BOM) }
+        "utf-16"    { [System.Text.Encoding]::Unicode }
+        "utf-16be"  { [System.Text.Encoding]::BigEndianUnicode }
+        "shift-jis" { [System.Text.Encoding]::GetEncoding(932) }
+        "euc-jp"    { [System.Text.Encoding]::GetEncoding(51932) }
+        "ascii"     { [System.Text.Encoding]::ASCII }
+        default     { New-Object System.Text.UTF8Encoding($BOM) }
     }
     
     # ファイル内容を読み込む
-    $content = $null
+    $content = [System.IO.File]::ReadAllText($InputFile, $srcEncoding)
     
-    # ソースエンコーディング
-    switch ($normalizedSourceEncoding) {
-        "utf-8" { $content = [System.IO.File]::ReadAllText($InputFile, [System.Text.Encoding]::UTF8) }
-        "shift-jis" { $content = [System.IO.File]::ReadAllText($InputFile, [System.Text.Encoding]::GetEncoding("shift-jis")) }
-        "euc-jp" { $content = [System.IO.File]::ReadAllText($InputFile, [System.Text.Encoding]::GetEncoding("euc-jp")) }
-        "iso-2022-jp" { $content = [System.IO.File]::ReadAllText($InputFile, [System.Text.Encoding]::GetEncoding("iso-2022-jp")) }
-        "ascii" { $content = [System.IO.File]::ReadAllText($InputFile, [System.Text.Encoding]::ASCII) }
-        "unicode" { $content = [System.IO.File]::ReadAllText($InputFile, [System.Text.Encoding]::Unicode) }
-        default { 
-            Write-Host "未対応の文字コードです: $normalizedSourceEncoding" -ForegroundColor Red
-            exit 1
-        }
+    # ファイル内容のプレビュー表示
+    Write-Host "ファイル内容プレビュー (最初の50行):" -ForegroundColor Cyan
+    Write-Host "--------------------------------------------------"
+    $contentLines = $content -split "`r?`n"
+    $previewLines = [Math]::Min(50, $contentLines.Length)
+    for ($i = 0; $i -lt $previewLines; $i++) {
+        Write-Host $contentLines[$i]
+    }
+    Write-Host "--------------------------------------------------"
+    
+    # バックアップファイル名
+    $backupFile = "$InputFile.bak"
+    $counter = 1
+    while (Test-Path $backupFile) {
+        $backupFile = "$InputFile.bak$counter"
+        $counter++
     }
     
-    # ターゲットエンコーディング
-    switch ($normalizedTargetEncoding) {
-        "utf-8" { 
-            if ($BOM) {
-                $utf8Bom = New-Object System.Text.UTF8Encoding($true)
-                [System.IO.File]::WriteAllText($OutputFile, $content, $utf8Bom)
-            } else {
-                [System.IO.File]::WriteAllText($OutputFile, $content, [System.Text.Encoding]::UTF8)
-            }
-        }
-        "shift-jis" { [System.IO.File]::WriteAllText($OutputFile, $content, [System.Text.Encoding]::GetEncoding("shift-jis")) }
-        "euc-jp" { [System.IO.File]::WriteAllText($OutputFile, $content, [System.Text.Encoding]::GetEncoding("euc-jp")) }
-        "iso-2022-jp" { [System.IO.File]::WriteAllText($OutputFile, $content, [System.Text.Encoding]::GetEncoding("iso-2022-jp")) }
-        "ascii" { [System.IO.File]::WriteAllText($OutputFile, $content, [System.Text.Encoding]::ASCII) }
-        "unicode" { [System.IO.File]::WriteAllText($OutputFile, $content, [System.Text.Encoding]::Unicode) }
-        default { 
-            Write-Host "未対応の文字コードです: $normalizedTargetEncoding" -ForegroundColor Red
-            exit 1
-        }
-    }
+    # バックアップを作成
+    Copy-Item -Path $InputFile -Destination $backupFile
     
-    Write-Host "ファイルを変換しました: $InputFile -> $OutputFile ($normalizedSourceEncoding -> $normalizedTargetEncoding)" -ForegroundColor Green
+    # 変換して書き込み
+    [System.IO.File]::WriteAllText($InputFile, $content, $dstEncoding)
     
-    if ($normalizedTargetEncoding -eq "utf-8" -and $BOM) {
-        Write-Host "UTF-8 BOMが付与されました" -ForegroundColor Green
-    }
+    Write-Host "文字コード変換が完了しました:" -ForegroundColor Green
+    Write-Host "  変換前: $SourceEncoding" -ForegroundColor Cyan
+    Write-Host "  変換後: $TargetEncoding (BOM: $BOM)" -ForegroundColor Cyan
+    Write-Host "  バックアップ: $backupFile" -ForegroundColor Yellow
 }
 catch {
-    Write-Host "エラーが発生しました: $_" -ForegroundColor Red
-    exit 1
+    Write-Host "ファイル内容の読み込み中にエラーが発生しました: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "ファイル分析中にエラーが発生しました: $($_.Exception.Message)" -ForegroundColor Red
 }

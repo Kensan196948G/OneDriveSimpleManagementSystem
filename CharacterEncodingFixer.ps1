@@ -1,423 +1,336 @@
 ﻿#
-# 文字化け診断・修正ツール - 修正版
-# 文字化けしたファイルの診断と修復を行うスクリプト
-#
+# 文字化け診断・修正GUIツール
+# 
+# PowerShellスクリプトの文字コード問題をGUIで診断・修正するツール
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# 共通ヘルパーのインポート
-$helperPath = Join-Path $PSScriptRoot "CharacterEncodingHelpers.ps1"
-if (Test-Path $helperPath) {
-    . $helperPath
-} else {
-    Write-Warning "ヘルパースクリプトが見つかりません: $helperPath"
-}
-
 # フォームの作成
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "文字化け診断・修正ツール"
-$form.Size = New-Object System.Drawing.Size(800, 600)
+$form.Text = "文字コード変換ツール"
+$form.Size = New-Object System.Drawing.Size(700, 600)
 $form.StartPosition = "CenterScreen"
+$form.Font = New-Object System.Drawing.Font("Yu Gothic UI", 9)
 
-# フォームアイコンの設定（アプリケーション共通アイコンがあれば）
-$iconPath = Join-Path $PSScriptRoot "AppIcon.ico"
-if (Test-Path $iconPath) {
-    $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($iconPath)
-}
-
-# ファイル選択部分
+# ファイル選択ラベル
 $fileLabel = New-Object System.Windows.Forms.Label
-$fileLabel.Location = New-Object System.Drawing.Point(10, 20)
-$fileLabel.Size = New-Object System.Drawing.Size(100, 20)
-$fileLabel.Text = "ファイルパス:"
+$fileLabel.Location = New-Object System.Drawing.Point(20, 20)
+$fileLabel.Size = New-Object System.Drawing.Size(150, 20)
+$fileLabel.Text = "変換するファイル:"
 $form.Controls.Add($fileLabel)
 
+# ファイルパステキストボックス
 $fileTextBox = New-Object System.Windows.Forms.TextBox
-$fileTextBox.Location = New-Object System.Drawing.Point(120, 20)
-$fileTextBox.Size = New-Object System.Drawing.Size(550, 20)
+$fileTextBox.Location = New-Object System.Drawing.Point(20, 45)
+$fileTextBox.Size = New-Object System.Drawing.Size(500, 20)
+$fileTextBox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $form.Controls.Add($fileTextBox)
 
+# 参照ボタン
 $browseButton = New-Object System.Windows.Forms.Button
-$browseButton.Location = New-Object System.Drawing.Point(680, 18)
-$browseButton.Size = New-Object System.Drawing.Size(80, 23)
+$browseButton.Location = New-Object System.Drawing.Point(530, 43)
+$browseButton.Size = New-Object System.Drawing.Size(100, 25)
 $browseButton.Text = "参照..."
+$browseButton.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Right
 $browseButton.Add_Click({
     $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
-    $openFileDialog.Filter = "すべてのファイル (*.*)|*.*|テキストファイル (*.txt)|*.txt|CSVファイル (*.csv)|*.csv|HTMLファイル (*.html;*.htm)|*.html;*.htm"
-    $openFileDialog.FilterIndex = 1
-    
+    $openFileDialog.Filter = "PowerShellスクリプト (*.ps1)|*.ps1|すべてのファイル (*.*)|*.*"
+    $openFileDialog.Title = "変換するファイルを選択"
+
     if ($openFileDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         $fileTextBox.Text = $openFileDialog.FileName
-        # ファイルが選択されたらデフォルトで検出を実行
         AnalyzeFile
     }
 })
 $form.Controls.Add($browseButton)
 
-# 文字コード選択部分
+# 元のエンコーディングラベル
 $sourceEncodingLabel = New-Object System.Windows.Forms.Label
-$sourceEncodingLabel.Location = New-Object System.Drawing.Point(10, 60)
-$sourceEncodingLabel.Size = New-Object System.Drawing.Size(100, 20)
+$sourceEncodingLabel.Location = New-Object System.Drawing.Point(20, 80)
+$sourceEncodingLabel.Size = New-Object System.Drawing.Size(150, 20)
 $sourceEncodingLabel.Text = "元の文字コード:"
 $form.Controls.Add($sourceEncodingLabel)
 
+# 元のエンコーディングコンボボックス
 $sourceEncodingComboBox = New-Object System.Windows.Forms.ComboBox
-$sourceEncodingComboBox.Location = New-Object System.Drawing.Point(120, 60)
-$sourceEncodingComboBox.Size = New-Object System.Drawing.Size(200, 20)
+$sourceEncodingComboBox.Location = New-Object System.Drawing.Point(170, 80)
+$sourceEncodingComboBox.Size = New-Object System.Drawing.Size(150, 20)
 $sourceEncodingComboBox.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
-[void]$sourceEncodingComboBox.Items.Add("自動検出")
-[void]$sourceEncodingComboBox.Items.Add("UTF8")
-[void]$sourceEncodingComboBox.Items.Add("UTF8BOM")
-[void]$sourceEncodingComboBox.Items.Add("SJIS")
-[void]$sourceEncodingComboBox.Items.Add("EUCJP")
-[void]$sourceEncodingComboBox.Items.Add("JIS")
-[void]$sourceEncodingComboBox.Items.Add("ASCII")
-[void]$sourceEncodingComboBox.Items.Add("Unicode")
+$sourceEncodingComboBox.Items.AddRange(@("auto", "utf-8", "utf-16", "shift-jis", "euc-jp", "ascii"))
 $sourceEncodingComboBox.SelectedIndex = 0
 $form.Controls.Add($sourceEncodingComboBox)
 
+# 変換後のエンコーディングラベル
 $targetEncodingLabel = New-Object System.Windows.Forms.Label
-$targetEncodingLabel.Location = New-Object System.Drawing.Point(340, 60)
-$targetEncodingLabel.Size = New-Object System.Drawing.Size(120, 20)
+$targetEncodingLabel.Location = New-Object System.Drawing.Point(350, 80)
+$targetEncodingLabel.Size = New-Object System.Drawing.Size(150, 20)
 $targetEncodingLabel.Text = "変換後の文字コード:"
 $form.Controls.Add($targetEncodingLabel)
 
+# 変換後のエンコーディングコンボボックス
 $targetEncodingComboBox = New-Object System.Windows.Forms.ComboBox
-$targetEncodingComboBox.Location = New-Object System.Drawing.Point(470, 60)
-$targetEncodingComboBox.Size = New-Object System.Drawing.Size(200, 20)
+$targetEncodingComboBox.Location = New-Object System.Drawing.Point(500, 80)
+$targetEncodingComboBox.Size = New-Object System.Drawing.Size(150, 20)
 $targetEncodingComboBox.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
-[void]$targetEncodingComboBox.Items.Add("UTF8")
-[void]$targetEncodingComboBox.Items.Add("UTF8BOM")
-[void]$targetEncodingComboBox.Items.Add("SJIS")
-[void]$targetEncodingComboBox.Items.Add("EUCJP")
-[void]$targetEncodingComboBox.Items.Add("JIS")
-[void]$targetEncodingComboBox.Items.Add("ASCII")
-[void]$targetEncodingComboBox.Items.Add("Unicode")
+$targetEncodingComboBox.Items.AddRange(@("utf-8", "utf-16", "shift-jis", "euc-jp", "ascii"))
 $targetEncodingComboBox.SelectedIndex = 0
 $form.Controls.Add($targetEncodingComboBox)
 
-# 実行ボタン
+# BOMチェックボックス
+$bomCheckBox = New-Object System.Windows.Forms.CheckBox
+$bomCheckBox.Location = New-Object System.Drawing.Point(500, 110)
+$bomCheckBox.Size = New-Object System.Drawing.Size(150, 20)
+$bomCheckBox.Text = "BOMを含める"
+$bomCheckBox.Checked = $true
+$form.Controls.Add($bomCheckBox)
+
+# 分析ボタン
 $analyzeButton = New-Object System.Windows.Forms.Button
-$analyzeButton.Location = New-Object System.Drawing.Point(10, 100)
-$analyzeButton.Size = New-Object System.Drawing.Size(150, 30)
-$analyzeButton.Text = "文字コードを分析"
-$analyzeButton.Add_Click({
-    AnalyzeFile
-})
+$analyzeButton.Location = New-Object System.Drawing.Point(20, 110)
+$analyzeButton.Size = New-Object System.Drawing.Size(120, 30)
+$analyzeButton.Text = "ファイル分析"
+$analyzeButton.Add_Click({ AnalyzeFile })
 $form.Controls.Add($analyzeButton)
 
-$fixButton = New-Object System.Windows.Forms.Button
-$fixButton.Location = New-Object System.Drawing.Point(180, 100)
-$fixButton.Size = New-Object System.Drawing.Size(150, 30)
-$fixButton.Text = "文字コードを変換"
-$fixButton.Add_Click({
-    FixEncoding
-})
-$form.Controls.Add($fixButton)
+# 変換ボタン
+$convertButton = New-Object System.Windows.Forms.Button
+$convertButton.Location = New-Object System.Drawing.Point(150, 110)
+$convertButton.Size = New-Object System.Drawing.Size(120, 30)
+$convertButton.Text = "変換実行"
+$convertButton.Add_Click({ ConvertFile })
+$form.Controls.Add($convertButton)
 
-$clearButton = New-Object System.Windows.Forms.Button
-$clearButton.Location = New-Object System.Drawing.Point(350, 100)
-$clearButton.Size = New-Object System.Drawing.Size(150, 30)
-$clearButton.Text = "クリア"
-$clearButton.Add_Click({
-    $previewTextBox.Clear()
-})
-$form.Controls.Add($clearButton)
+# 結果表示用リッチテキストボックス
+$resultTextBox = New-Object System.Windows.Forms.RichTextBox
+$resultTextBox.Location = New-Object System.Drawing.Point(20, 150)
+$resultTextBox.Size = New-Object System.Drawing.Size(640, 350)
+$resultTextBox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right -bor [System.Windows.Forms.AnchorStyles]::Bottom
+$resultTextBox.ReadOnly = $true
+$resultTextBox.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 240)
+$form.Controls.Add($resultTextBox)
 
-# ステータス表示用ラベル
+# ステータスラベル
 $statusLabel = New-Object System.Windows.Forms.Label
-$statusLabel.Location = New-Object System.Drawing.Point(520, 105)
-$statusLabel.Size = New-Object System.Drawing.Size(250, 20)
-$statusLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
-$statusLabel.ForeColor = [System.Drawing.Color]::DarkBlue
+$statusLabel.Location = New-Object System.Drawing.Point(20, 510)
+$statusLabel.Size = New-Object System.Drawing.Size(640, 40)
+$statusLabel.Anchor = [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+$statusLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
 $form.Controls.Add($statusLabel)
 
-# プレビュー部分
-$previewLabel = New-Object System.Windows.Forms.Label
-$previewLabel.Location = New-Object System.Drawing.Point(10, 150)
-$previewLabel.Size = New-Object System.Drawing.Size(100, 20)
-$previewLabel.Text = "プレビュー:"
-$form.Controls.Add($previewLabel)
+# ファイル分析関数
+function AnalyzeFile {
+    $resultTextBox.Clear()
+    $statusLabel.Text = "ファイル分析中..."
+    $statusLabel.ForeColor = [System.Drawing.Color]::Blue
+    
+    $filePath = $fileTextBox.Text
+    
+    if (-not (Test-Path $filePath)) {
+        $statusLabel.Text = "エラー: ファイルが見つかりません。"
+        $statusLabel.ForeColor = [System.Drawing.Color]::Red
+        return
+    }
+    
+    # 文字コード自動検出
+    $encodingInfo = Detect-FileEncoding -FilePath $filePath
+    
+    # 結果表示
+    $resultTextBox.AppendText("ファイル: " + $filePath + "`r`n")
+    $resultTextBox.AppendText("検出された文字コード: " + $encodingInfo.Encoding + " (信頼度: " + $encodingInfo.Confidence + "%)`r`n")
+    $resultTextBox.AppendText("BOM: " + $encodingInfo.BOM + "`r`n`r`n")
+    
+    # 文字コードをセット
+    if ($sourceEncodingComboBox.SelectedItem -eq "auto") {
+        # 検出された文字コードを自動選択
+        for ($i = 0; $i -lt $sourceEncodingComboBox.Items.Count; $i++) {
+            if ($sourceEncodingComboBox.Items[$i] -eq $encodingInfo.Encoding) {
+                $sourceEncodingComboBox.SelectedIndex = $i
+                break
+            }
+        }
+    }
+    
+    # ファイルの内容をプレビュー表示
+    try {
+        $srcEncoding = switch ($encodingInfo.Encoding.ToLower()) {
+            "utf-8"     { [System.Text.Encoding]::UTF8 }
+            "utf-16"    { [System.Text.Encoding]::Unicode }
+            "utf-16be"  { [System.Text.Encoding]::BigEndianUnicode }
+            "shift-jis" { [System.Text.Encoding]::GetEncoding(932) }
+            "euc-jp"    { [System.Text.Encoding]::GetEncoding(51932) }
+            "ascii"     { [System.Text.Encoding]::ASCII }
+            default     { [System.Text.Encoding]::UTF8 }
+        }
+        
+        $content = [System.IO.File]::ReadAllText($filePath, $srcEncoding)
+        $contentLines = $content -split "`r?`n"
+        
+        $resultTextBox.AppendText("ファイル内容プレビュー (最初の20行):" + "`r`n")
+        $resultTextBox.AppendText("--------------------------------------------------" + "`r`n")
+        
+        $previewLines = [Math]::Min(20, $contentLines.Length)
+        for ($i = 0; $i -lt $previewLines; $i++) {
+            $resultTextBox.AppendText($contentLines[$i] + "`r`n")
+        }
+        
+        $resultTextBox.AppendText("--------------------------------------------------" + "`r`n")
+        $statusLabel.Text = "ファイル分析が完了しました。変換を実行するには [変換実行] ボタンをクリックしてください。"
+        $statusLabel.ForeColor = [System.Drawing.Color]::Green
+    }
+    catch {
+        $resultTextBox.AppendText("エラー: ファイル内容の読み取り中にエラーが発生しました。" + "`r`n")
+        $resultTextBox.AppendText($_.Exception.Message + "`r`n")
+        $statusLabel.Text = "エラーが発生しました。"
+        $statusLabel.ForeColor = [System.Drawing.Color]::Red
+    }
+}
 
-$previewTextBox = New-Object System.Windows.Forms.TextBox
-$previewTextBox.Location = New-Object System.Drawing.Point(10, 180)
-$previewTextBox.Size = New-Object System.Drawing.Size(760, 350)
-$previewTextBox.Multiline = $true
-$previewTextBox.ScrollBars = "Both"
-$previewTextBox.ReadOnly = $true
-$previewTextBox.Font = New-Object System.Drawing.Font("MS Gothic", 10)
-$form.Controls.Add($previewTextBox)
+# ファイル変換関数
+function ConvertFile {
+    $filePath = $fileTextBox.Text
+    $sourceEncoding = $sourceEncodingComboBox.SelectedItem
+    $targetEncoding = $targetEncodingComboBox.SelectedItem
+    $useBom = $bomCheckBox.Checked
+    
+    if (-not (Test-Path $filePath)) {
+        $statusLabel.Text = "エラー: ファイルが見つかりません。"
+        $statusLabel.ForeColor = [System.Drawing.Color]::Red
+        return
+    }
+    
+    try {
+        # 入力エンコーディング
+        $srcEncoding = switch ($sourceEncoding.ToLower()) {
+            "utf-8"     { [System.Text.Encoding]::UTF8 }
+            "utf-16"    { [System.Text.Encoding]::Unicode }
+            "utf-16be"  { [System.Text.Encoding]::BigEndianUnicode }
+            "shift-jis" { [System.Text.Encoding]::GetEncoding(932) }
+            "euc-jp"    { [System.Text.Encoding]::GetEncoding(51932) }
+            "ascii"     { [System.Text.Encoding]::ASCII }
+            default     { [System.Text.Encoding]::UTF8 }
+        }
+        
+        # 出力エンコーディング
+        $dstEncoding = switch ($targetEncoding.ToLower()) {
+            "utf-8"     { New-Object System.Text.UTF8Encoding($useBom) }
+            "utf-16"    { [System.Text.Encoding]::Unicode }
+            "utf-16be"  { [System.Text.Encoding]::BigEndianUnicode }
+            "shift-jis" { [System.Text.Encoding]::GetEncoding(932) }
+            "euc-jp"    { [System.Text.Encoding]::GetEncoding(51932) }
+            "ascii"     { [System.Text.Encoding]::ASCII }
+            default     { New-Object System.Text.UTF8Encoding($useBom) }
+        }
+        
+        # ファイル内容を読み込む
+        $content = [System.IO.File]::ReadAllText($filePath, $srcEncoding)
+        
+        # バックアップファイル作成
+        $backupFile = "$filePath.bak"
+        $counter = 1
+        while (Test-Path $backupFile) {
+            $backupFile = "$filePath.bak$counter"
+            $counter++
+        }
+        
+        Copy-Item -Path $filePath -Destination $backupFile
+        
+        # 変換して書き込み
+        [System.IO.File]::WriteAllText($filePath, $content, $dstEncoding)
+        
+        $resultTextBox.AppendText("`r`n変換が完了しました:" + "`r`n")
+        $resultTextBox.AppendText("  変換前: $sourceEncoding`r`n")
+        $resultTextBox.AppendText("  変換後: $targetEncoding (BOM: $useBom)`r`n")
+        $resultTextBox.AppendText("  バックアップ: $backupFile`r`n")
+        
+        $statusLabel.Text = "変換が正常に完了しました。"
+        $statusLabel.ForeColor = [System.Drawing.Color]::Green
+    }
+    catch {
+        $resultTextBox.AppendText("エラー: 変換処理中にエラーが発生しました。" + "`r`n")
+        $resultTextBox.AppendText($_.Exception.Message + "`r`n")
+        $statusLabel.Text = "変換エラーが発生しました。"
+        $statusLabel.ForeColor = [System.Drawing.Color]::Red
+    }
+}
 
-# 検出した文字コードを保存する変数
-$script:detectedEncoding = $null
-
-# ステータス更新関数
-function Update-Status {
+# 文字コード検出関数
+function Detect-FileEncoding {
     param (
-        [string]$Message,
-        [System.Drawing.Color]$Color = [System.Drawing.Color]::DarkBlue
+        [string]$FilePath
     )
     
-    $statusLabel.Text = $Message
-    $statusLabel.ForeColor = $Color
-    $form.Refresh()
-}
-
-# ファイルを分析する関数
-function AnalyzeFile {
-    $filePath = $fileTextBox.Text
+    # ファイルの先頭部分を読み込む
+    $bytes = [System.IO.File]::ReadAllBytes($FilePath)
     
-    if (-not (Test-Path $filePath -PathType Leaf)) {
-        [System.Windows.Forms.MessageBox]::Show("ファイルが見つかりません: $filePath", "エラー", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
-        return
+    # BOM チェック
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+        return @{Encoding = "utf-8"; BOM = $true; Confidence = 100}
+    }
+    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
+        return @{Encoding = "utf-16BE"; BOM = $true; Confidence = 100}
+    }
+    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+        return @{Encoding = "utf-16"; BOM = $true; Confidence = 100}
     }
     
-    $previewTextBox.Clear()
-    Update-Status "ファイルを分析中..." [System.Drawing.Color]::DarkBlue
-    $previewTextBox.AppendText("ファイルを分析中: $filePath`r`n`r`n")
+    # 文字コードの推測（簡易版）
+    $content = $bytes
     
-    try {
-        # ファイルのバイト配列を取得
-        $bytes = [System.IO.File]::ReadAllBytes($filePath)
+    # ASCII チェック
+    $isASCII = $true
+    foreach ($byte in $content) {
+        if ($byte -gt 127) {
+            $isASCII = $false
+            break
+        }
+    }
+    
+    if ($isASCII) {
+        return @{Encoding = "ascii"; BOM = $false; Confidence = 90}
+    }
+    
+    # UTF-8 チェック
+    $isUTF8 = $true
+    $i = 0
+    while ($i -lt $content.Length) {
+        if ($content[$i] -lt 128) {
+            $i++
+            continue
+        }
         
-        # BOMチェック
-        $hasBOM = $false
-        if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
-            $hasBOM = $true
-            $previewTextBox.AppendText("UTF-8 BOMが検出されました。`r`n`r`n")
+        # UTF-8の複数バイト文字を検出
+        if (($content[$i] -ge 0xC2 -and $content[$i] -le 0xDF) -and
+            ($i + 1 -lt $content.Length) -and
+            ($content[$i + 1] -ge 0x80 -and $content[$i + 1] -le 0xBF)) {
+            $i += 2
         }
-        elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
-            $previewTextBox.AppendText("Unicode (UTF-16 LE) BOMが検出されました。`r`n`r`n")
+        elseif (($content[$i] -ge 0xE0 -and $content[$i] -le 0xEF) -and
+                ($i + 2 -lt $content.Length) -and
+                ($content[$i + 1] -ge 0x80 -and $content[$i + 1] -le 0xBF) -and
+                ($content[$i + 2] -ge 0x80 -and $content[$i + 2] -le 0xBF)) {
+            $i += 3
         }
-        elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
-            $previewTextBox.AppendText("Unicode (UTF-16 BE) BOMが検出されました。`r`n`r`n")
-        }
-        
-        # 共通関数が利用可能な場合はそちらを使用
-        if (Get-Command -Name Get-FileEncoding -ErrorAction SilentlyContinue) {
-            $encodingInfo = Get-FileEncoding -FilePath $filePath
-            $previewTextBox.AppendText("検出された文字コード: $($encodingInfo.DisplayName) (信頼度: $($encodingInfo.Confidence)%)`r`n`r`n")
-            $script:detectedEncoding = $encodingInfo.Name
+        elseif (($content[$i] -ge 0xF0 -and $content[$i] -le 0xF7) -and
+                ($i + 3 -lt $content.Length) -and
+                ($content[$i + 1] -ge 0x80 -and $content[$i + 1] -le 0xBF) -and
+                ($content[$i + 2] -ge 0x80 -and $content[$i + 2] -le 0xBF) -and
+                ($content[$i + 3] -ge 0x80 -and $content[$i + 3] -le 0xBF)) {
+            $i += 4
         }
         else {
-            # 手動での文字コード検出
-            $encodings = @(
-                [System.Text.Encoding]::UTF8,
-                [System.Text.Encoding]::GetEncoding("shift-jis"),
-                [System.Text.Encoding]::GetEncoding("euc-jp"),
-                [System.Text.Encoding]::GetEncoding("iso-2022-jp"),
-                [System.Text.Encoding]::ASCII,
-                [System.Text.Encoding]::Unicode
-            )
-            
-            $results = @()
-            
-            foreach ($encoding in $encodings) {
-                try {
-                    $decodedString = $encoding.GetString($bytes)
-                    $reEncodedBytes = $encoding.GetBytes($decodedString)
-                    
-                    $matchCount = 0
-                    $compareLength = [Math]::Min($bytes.Length, $reEncodedBytes.Length)
-                    
-                    for ($i = 0; $i -lt $compareLength; $i++) {
-                        if ($bytes[$i] -eq $reEncodedBytes[$i]) {
-                            $matchCount++
-                        }
-                    }
-                    
-                    $confidencePercent = [Math]::Round(($matchCount / $compareLength) * 100, 2)
-                    
-                    $encodingName = switch ($encoding.WebName) {
-                        "utf-8" { if ($hasBOM) { "UTF8BOM" } else { "UTF8" } }
-                        "shift_jis" { "SJIS" }
-                        "euc-jp" { "EUCJP" }
-                        "iso-2022-jp" { "JIS" }
-                        "us-ascii" { "ASCII" }
-                        "unicode" { "Unicode" }
-                        default { $encoding.WebName }
-                    }
-                    
-                    $displayName = switch ($encoding.WebName) {
-                        "utf-8" { if ($hasBOM) { "UTF-8 (BOMあり)" } else { "UTF-8" } }
-                        "shift_jis" { "Shift-JIS" }
-                        "euc-jp" { "EUC-JP" }
-                        "iso-2022-jp" { "ISO-2022-JP" }
-                        "us-ascii" { "ASCII" }
-                        "unicode" { "Unicode (UTF-16)" }
-                        default { $encoding.WebName }
-                    }
-                    
-                    $results += [PSCustomObject]@{
-                        Name = $encodingName
-                        DisplayName = $displayName
-                        Encoding = $encoding
-                        Confidence = $confidencePercent
-                    }
-                }
-                catch {
-                    # エラーが発生した場合は無視
-                }
-            }
-            
-            # 信頼度でソート
-            $sortedResults = $results | Sort-Object -Property Confidence -Descending
-            
-            $previewTextBox.AppendText("検出された可能性のある文字コード:`r`n")
-            foreach ($result in $sortedResults) {
-                $previewTextBox.AppendText("- $($result.DisplayName): $($result.Confidence)%`r`n")
-            }
-            
-            # 最も可能性の高い文字コードを特定
-            $bestMatch = $sortedResults[0]
-            $previewTextBox.AppendText("`r`n最も可能性の高い文字コード: $($bestMatch.DisplayName)`r`n`r`n")
-            $script:detectedEncoding = $bestMatch.Name
-        }
-        
-        # ファイル内容のプレビュー表示
-        try {
-            # 検出されたエンコーディングでファイルを読み込む
-            $encodingObj = if (Get-Command -Name Get-EncodingObject -ErrorAction SilentlyContinue) {
-                Get-EncodingObject -EncodingName $script:detectedEncoding
-            } else {
-                # エンコーディング名から適切なオブジェクトを作成
-                switch ($script:detectedEncoding) {
-                    "UTF8" { [System.Text.Encoding]::UTF8 }
-                    "UTF8BOM" { New-Object System.Text.UTF8Encoding($true) }
-                    "SJIS" { [System.Text.Encoding]::GetEncoding("shift-jis") }
-                    "EUCJP" { [System.Text.Encoding]::GetEncoding("euc-jp") }
-                    "JIS" { [System.Text.Encoding]::GetEncoding("iso-2022-jp") }
-                    "ASCII" { [System.Text.Encoding]::ASCII }
-                    "Unicode" { [System.Text.Encoding]::Unicode }
-                    default { [System.Text.Encoding]::UTF8 }
-                }
-            }
-            
-            $content = [System.IO.File]::ReadAllText($filePath, $encodingObj)
-            $previewLines = $content -split "`r`n" | Select-Object -First 50
-            $preview = [string]::Join("`r`n", $previewLines)
-            
-            $previewTextBox.AppendText("ファイル内容プレビュー (最初の50行):`r`n")
-            $previewTextBox.AppendText("--------------------------------------------------`r`n")
-            $previewTextBox.AppendText($preview)
-            
-            if (($content -split "`r`n").Length -gt 50) {
-                $previewTextBox.AppendText("`r`n--------------------------------------------------`r`n")
-                $previewTextBox.AppendText("(以下省略)")
-            }
-            
-            Update-Status "文字コード分析が完了しました" [System.Drawing.Color]::Green
-        }
-        catch {
-            $previewTextBox.AppendText("ファイル内容の読み込み中にエラーが発生しました: $_`r`n")
-            Update-Status "エラーが発生しました" [System.Drawing.Color]::Red
+            $isUTF8 = $false
+            break
         }
     }
-    catch {
-        $previewTextBox.AppendText("ファイル分析中にエラーが発生しました: $_`r`n")
-        Update-Status "エラーが発生しました" [System.Drawing.Color]::Red
+    
+    if ($isUTF8) {
+        return @{Encoding = "utf-8"; BOM = $false; Confidence = 85}
     }
+    
+    # 日本語環境ではShift-JISが最も一般的
+    return @{Encoding = "shift-jis"; BOM = $false; Confidence = 60}
 }
 
-# 文字コードを変換する関数
-function FixEncoding {
-    $filePath = $fileTextBox.Text
-    
-    if (-not (Test-Path $filePath -PathType Leaf)) {
-        [System.Windows.Forms.MessageBox]::Show("ファイルが見つかりません: $filePath", "エラー", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
-        return
-    }
-    
-    $sourceEncoding = $sourceEncodingComboBox.SelectedItem
-    if ($sourceEncoding -eq "自動検出") {
-        if ($script:detectedEncoding) {
-            $sourceEncoding = $script:detectedEncoding
-        }
-        else {
-            # 自動検出が選択されているが、まだ検出していない場合
-            AnalyzeFile
-            $sourceEncoding = $script:detectedEncoding
-        }
-    }
-    
-    $targetEncoding = $targetEncodingComboBox.SelectedItem
-    
-    $outputPath = "$filePath.converted"
-    
-    $previewTextBox.Clear()
-    Update-Status "文字コード変換中..." [System.Drawing.Color]::DarkBlue
-    $previewTextBox.AppendText("文字コード変換中: $filePath`r`n")
-    $previewTextBox.AppendText("元の文字コード: $sourceEncoding`r`n")
-    $previewTextBox.AppendText("変換後の文字コード: $targetEncoding`r`n`r`n")
-    
-    try {
-        # ソースエンコーディングとターゲットエンコーディングのオブジェクトを取得
-        $sourceEncodingObj = if (Get-Command -Name Get-EncodingObject -ErrorAction SilentlyContinue) {
-            Get-EncodingObject -EncodingName $sourceEncoding
-        } else {
-            # 手動でエンコーディングオブジェクトを作成
-            switch ($sourceEncoding) {
-                "UTF8" { [System.Text.Encoding]::UTF8 }
-                "UTF8BOM" { New-Object System.Text.UTF8Encoding($true) }
-                "SJIS" { [System.Text.Encoding]::GetEncoding("shift-jis") }
-                "EUCJP" { [System.Text.Encoding]::GetEncoding("euc-jp") }
-                "JIS" { [System.Text.Encoding]::GetEncoding("iso-2022-jp") }
-                "ASCII" { [System.Text.Encoding]::ASCII }
-                "Unicode" { [System.Text.Encoding]::Unicode }
-                default { [System.Text.Encoding]::UTF8 }
-            }
-        }
-        
-        $targetEncodingObj = if (Get-Command -Name Get-EncodingObject -ErrorAction SilentlyContinue) {
-            Get-EncodingObject -EncodingName $targetEncoding
-        } else {
-            # 手動でエンコーディングオブジェクトを作成
-            switch ($targetEncoding) {
-                "UTF8" { [System.Text.Encoding]::UTF8 }
-                "UTF8BOM" { New-Object System.Text.UTF8Encoding($true) }
-                "SJIS" { [System.Text.Encoding]::GetEncoding("shift-jis") }
-                "EUCJP" { [System.Text.Encoding]::GetEncoding("euc-jp") }
-                "JIS" { [System.Text.Encoding]::GetEncoding("iso-2022-jp") }
-                "ASCII" { [System.Text.Encoding]::ASCII }
-                "Unicode" { [System.Text.Encoding]::Unicode }
-                default { [System.Text.Encoding]::UTF8 }
-            }
-        }
-        
-        # ファイルを読み込み、内容を取得
-        $content = [System.IO.File]::ReadAllText($filePath, $sourceEncodingObj)
-        
-        # 元のファイルのバックアップを作成
-        $backupPath = "$filePath.backup"
-        Copy-Item -Path $filePath -Destination $backupPath -Force
-        
-        # 新しいエンコーディングで内容を書き込み
-        [System.IO.File]::WriteAllText($filePath, $content, $targetEncodingObj)
-        
-        $previewTextBox.AppendText("変換が完了しました。`r`n")
-        $previewTextBox.AppendText("元のファイルは $backupPath にバックアップされました。`r`n`r`n")
-        
-        # 変換後のファイルを表示
-        $convertedContent = [System.IO.File]::ReadAllText($filePath, $targetEncodingObj)
-        $convertedLines = $convertedContent -split "`r`n" | Select-Object -First 50
-        $convertedPreview = [string]::Join("`r`n", $convertedLines)
-        
-        $previewTextBox.AppendText("変換後のファイル内容プレビュー (最初の50行):`r`n")
-        $previewTextBox.AppendText("--------------------------------------------------`r`n")
-        $previewTextBox.AppendText($convertedPreview)
-        
-        if (($convertedContent -split "`r`n").Length -gt 50) {
-            $previewTextBox.AppendText("`r`n--------------------------------------------------`r`n")
-            $previewTextBox.AppendText("(以下省略)")
-        }
-    }
-    catch {
-        $previewTextBox.AppendText("エラーが発生しました: $_`r`n")
-        $previewTextBox.AppendText("詳細: $($_.Exception.Message)`r`n")
-        $previewTextBox.AppendText("スタックトレース: $($_.ScriptStackTrace)`r`n")
-    }
-}
-
-# フォームを表示
-[void]$form.ShowDialog()
+# フォームの表示
+$form.ShowDialog()
