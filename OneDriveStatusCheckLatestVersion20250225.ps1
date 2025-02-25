@@ -1,4 +1,4 @@
-# OneDriveStatusCheckLatestVersion20250220.ps1
+﻿# OneDriveStatusCheckLatestVersion20250220.ps1
 # HTML末尾に <script src="OneDriveStatus_XXXX.js"></script> を正しく配置し
 # CSV出力や検索・印刷などDataTablesの機能が動作するようにする
 # 
@@ -204,6 +204,121 @@ try {
         throw "必要なモジュールの設定に失敗しました。"
     }
 
+    # 既存のパーミッションチェックと安全な接続処理（強化版）
+    function Connect-MgGraphSafely {
+        param (
+            [array]$RequiredScopes
+        )
+
+        try {
+            Write-DetailLog "認証プロセスを開始します..." -Level INFO
+            Write-DetailLog "グローバル管理者アカウントでサインインしてください。" -Level INFO
+            Write-DetailLog "1. Microsoftアカウント（例: username@mirai-const.co.jp）を入力" -Level INFO
+            Write-DetailLog "2. HENGEONEのパスワードを入力" -Level INFO
+            
+            # 既存の接続を確認
+            $existingContext = Get-MgContext
+            if ($existingContext) {
+                Write-DetailLog "既存の接続を検出: $($existingContext.Account)" -Level INFO
+                
+                # ユーザーの役割を確認
+                try {
+                    $currentUser = Get-MgUser -UserId $existingContext.Account -ErrorAction Stop
+                    Write-DetailLog "現在のユーザー: $($currentUser.DisplayName)" -Level INFO
+                    
+                    # 既存のスコープを詳細表示
+                    Write-DetailLog "現在の権限スコープ:" -Level INFO
+                    foreach ($scope in $existingContext.Scopes) {
+                        Write-DetailLog " - $scope" -Level INFO
+                    }
+                    
+                    # 既存のスコープで十分か確認
+                    $missingScopes = $RequiredScopes | Where-Object { $existingContext.Scopes -notcontains $_ }
+                    if ($missingScopes.Count -gt 0) {
+                        Write-DetailLog "以下の権限が不足しています:" -Level WARNING
+                        foreach ($scope in $missingScopes) {
+                            Write-DetailLog " - $scope" -Level WARNING
+                        }
+                        Write-DetailLog "再認証を行います..." -Level INFO
+                        Disconnect-MgGraph -ErrorAction SilentlyContinue
+                        Start-Sleep -Seconds 2
+                    } else {
+                        Write-DetailLog "必要な権限はすべて付与されています。" -Level INFO
+                        return $existingContext
+                    }
+                }
+                catch {
+                    Write-DetailLog "ユーザー情報の取得に失敗しました。再認証を行います... エラー: $($_.Exception.Message)" -Level WARNING
+                    Disconnect-MgGraph -ErrorAction SilentlyContinue
+                    Start-Sleep -Seconds 2
+                }
+            }
+
+            # 認証方法の選択
+            Write-Host "`n認証方法を選択してください：" -ForegroundColor Yellow
+            Write-Host "1: 通常の認証（推奨）- Microsoftアカウントとパスワードを入力" -ForegroundColor Green
+            Write-Host "2: デバイスコード認証 - コードを使用して別デバイスで認証" -ForegroundColor Green
+            Write-Host "3: 管理者同意付きデバイスコード認証（問題解決用）" -ForegroundColor Cyan
+            $authChoice = Read-Host "`n選択 (1, 2, または 3)"
+
+            # 認証パラメータの設定
+            $connectParams = @{
+                Scopes = $RequiredScopes
+                ErrorAction = "Stop"
+            }
+
+            switch ($authChoice) {
+                "2" {
+                    $connectParams["UseDeviceAuthentication"] = $true
+                }
+                "3" {
+                    $connectParams["UseDeviceAuthentication"] = $true
+                    # 管理者の同意を強制的に要求するフラグを追加
+                    $connectParams["ForceConsent"] = $true
+                }
+            }
+
+            # 認証を実行
+            Write-DetailLog "以下の権限スコープで認証を開始します:" -Level INFO
+            foreach ($scope in $RequiredScopes) {
+                Write-DetailLog " - $scope" -Level INFO
+            }
+            
+            Connect-MgGraph @connectParams
+            $newContext = Get-MgContext
+
+            if (-not $newContext) {
+                throw "認証コンテキストを取得できません。"
+            }
+
+            # 取得したスコープを確認
+            Write-DetailLog "認証成功: $($newContext.Account)" -Level INFO
+            Write-DetailLog "取得した権限スコープ:" -Level INFO
+            foreach ($scope in $newContext.Scopes) {
+                Write-DetailLog " - $scope" -Level INFO
+            }
+            
+            # 必要なスコープがすべて取得できたか確認
+            $stillMissingScopes = $RequiredScopes | Where-Object { $newContext.Scopes -notcontains $_ }
+            if ($stillMissingScopes.Count -gt 0) {
+                Write-DetailLog "警告: 以下の権限が取得できませんでした:" -Level WARNING
+                foreach ($scope in $stillMissingScopes) {
+                    Write-DetailLog " - $scope" -Level WARNING
+                }
+                Write-DetailLog "一部の機能が制限される可能性があります。" -Level WARNING
+            }
+            
+            return $newContext
+        }
+        catch {
+            Write-DetailLog "認証プロセスでエラーが発生しました: $($_.Exception.Message)" -Level ERROR
+            if ($_.Exception.InnerException) {
+                Write-DetailLog "詳細エラー: $($_.Exception.InnerException.Message)" -Level ERROR
+            }
+            throw
+        }
+    } # 問題点1: 関数の閉じ括弧の不足を修正
+
     try {
         Write-Host "Microsoft Graph API への接続を開始します..." -ForegroundColor Yellow
         
@@ -234,128 +349,16 @@ try {
         # $requiredScopes += $additionalScopes
         #>
 
-        # 既存のパーミッションチェックと安全な接続処理（強化版）
-        function Connect-MgGraphSafely {
-            param (
-                [array]$RequiredScopes
-            )
-
-            try {
-                Write-DetailLog "認証プロセスを開始します..." -Level INFO
-                Write-DetailLog "グローバル管理者アカウントでサインインしてください。" -Level INFO
-                Write-DetailLog "1. Microsoftアカウント（例: username@mirai-const.co.jp）を入力" -Level INFO
-                Write-DetailLog "2. HENGEONEのパスワードを入力" -Level INFO
-                
-                # 既存の接続を確認
-                $existingContext = Get-MgContext
-                if ($existingContext) {
-                    Write-DetailLog "既存の接続を検出: $($existingContext.Account)" -Level INFO
-                    
-                    # ユーザーの役割を確認
-                    try {
-                        $currentUser = Get-MgUser -UserId $existingContext.Account -ErrorAction Stop
-                        Write-DetailLog "現在のユーザー: $($currentUser.DisplayName)" -Level INFO
-                        
-                        # 既存のスコープを詳細表示
-                        Write-DetailLog "現在の権限スコープ:" -Level INFO
-                        foreach ($scope in $existingContext.Scopes) {
-                            Write-DetailLog " - $scope" -Level INFO
-                        }
-                        
-                        # 既存のスコープで十分か確認
-                        $missingScopes = $RequiredScopes | Where-Object { $existingContext.Scopes -notcontains $_ }
-                        if ($missingScopes.Count -gt 0) {
-                            Write-DetailLog "以下の権限が不足しています:" -Level WARNING
-                            foreach ($scope in $missingScopes) {
-                                Write-DetailLog " - $scope" -Level WARNING
-                            }
-                            Write-DetailLog "再認証を行います..." -Level INFO
-                            Disconnect-MgGraph -ErrorAction SilentlyContinue
-                            Start-Sleep -Seconds 2
-                        } else {
-                            Write-DetailLog "必要な権限はすべて付与されています。" -Level INFO
-                            return $existingContext
-                        }
-                    }
-                    catch {
-                        Write-DetailLog "ユーザー情報の取得に失敗しました。再認証を行います... エラー: $($_.Exception.Message)" -Level WARNING
-                        Disconnect-MgGraph -ErrorAction SilentlyContinue
-                        Start-Sleep -Seconds 2
-                    }
-                }
-
-                # 認証方法の選択
-                Write-Host "`n認証方法を選択してください：" -ForegroundColor Yellow
-                Write-Host "1: 通常の認証（推奨）- Microsoftアカウントとパスワードを入力" -ForegroundColor Green
-                Write-Host "2: デバイスコード認証 - コードを使用して別デバイスで認証" -ForegroundColor Green
-                Write-Host "3: 管理者同意付きデバイスコード認証（問題解決用）" -ForegroundColor Cyan
-                $authChoice = Read-Host "`n選択 (1, 2, or 3)"
-
-                # 認証パラメータの設定
-                $connectParams = @{
-                    Scopes = $RequiredScopes
-                    ErrorAction = "Stop"
-                }
-
-                switch ($authChoice) {
-                    "2" {
-                        $connectParams["UseDeviceAuthentication"] = $true
-                    }
-                    "3" {
-                        $connectParams["UseDeviceAuthentication"] = $true
-                        # 管理者の同意を強制的に要求するフラグを追加
-                        $connectParams["ForceConsent"] = $true
-                    }
-                }
-
-                # 認証を実行
-                Write-DetailLog "以下の権限スコープで認証を開始します:" -Level INFO
-                foreach ($scope in $RequiredScopes) {
-                    Write-DetailLog " - $scope" -Level INFO
-                }
-                
-                Connect-MgGraph @connectParams
-                $newContext = Get-MgContext
-
-                if (-not $newContext) {
-                    throw "認証コンテキストを取得できません。"
-                }
-
-                # 取得したスコープを確認
-                Write-DetailLog "認証成功: $($newContext.Account)" -Level INFO
-                Write-DetailLog "取得した権限スコープ:" -Level INFO
-                foreach ($scope in $newContext.Scopes) {
-                    Write-DetailLog " - $scope" -Level INFO
-                }
-                
-                # 必要なスコープがすべて取得できたか確認
-                $stillMissingScopes = $RequiredScopes | Where-Object { $newContext.Scopes -notcontains $_ }
-                if ($stillMissingScopes.Count -gt 0) {
-                    Write-DetailLog "警告: 以下の権限が取得できませんでした:" -Level WARNING
-                    foreach ($scope in $stillMissingScopes) {
-                        Write-DetailLog " - $scope" -Level WARNING
-                    }
-                    Write-DetailLog "一部の機能が制限される可能性があります。" -Level WARNING
-                }
-                
-                return $newContext
-            }
-            catch {
-                Write-DetailLog "認証プロセスでエラーが発生しました: $($_.Exception.Message)" -Level ERROR
-                if ($_.Exception.InnerException) {
-                    Write-DetailLog "詳細エラー: $($_.Exception.InnerException.Message)" -Level ERROR
-                }
-                throw
-            }
-        }
-
         # 安全な接続を実行
         try {
             $context = Connect-MgGraphSafely -RequiredScopes $requiredScopes
         }
         catch {
             Write-ErrorLog $_ "Microsoft Graph API への接続に失敗しました。"
-            throw
+            # 問題点2: try-catchブロックの構造の修正
+            # throwではなく、エラーメッセージを表示して終了
+            Write-Host "Microsoft Graph API への接続に失敗しました。処理を中止します。" -ForegroundColor Red
+            Exit 1 # 明示的に終了するように修正
         }
 
         # 接続情報を表示
@@ -364,7 +367,6 @@ try {
         Write-DetailLog "- アプリケーション: $($context.AppName)" -Level INFO
         Write-DetailLog "- テナント: $($context.TenantId)" -Level INFO
         Write-DetailLog "- トークン有効期限: $($context.ExpiresOn)" -Level INFO
-
     }
     catch {
         Write-ErrorLog $_ "Microsoft Graph API への接続でエラーが発生しました。"
@@ -415,7 +417,7 @@ try {
                             "Content-Type" = "application/json"
                         }
                         
-                        Write-DetailLog "REST API呼び出し試行 $i/$retryCount: $apiUrl" -Level INFO
+                        Write-DetailLog "REST API呼び出し試行 ${i}/${retryCount}: ${apiUrl}" -Level INFO
                         $response = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get -ErrorAction Stop
                         Write-DetailLog "REST APIでユーザー $userId のOneDrive情報を取得しました。" -Level INFO
                         return $response
@@ -529,11 +531,11 @@ try {
 
     # JSファイルの内容 (DataTables の設定など)
     Write-DetailLog "JavaScriptファイルの出力を開始します..." -Level INFO
-    $jsContent = @'
-$(document).ready(function() {
-    var table = $("#dataTable").DataTable({
+    $jsContent = @"
+`$(document).ready(function() {
+    var table = `$('#dataTable').DataTable({
         language: {
-            url: "https://cdn.datatables.net/plug-ins/1.11.5/i18n/ja.json"
+            url: 'https://cdn.datatables.net/plug-ins/1.11.5/i18n/ja.json'
         },
         dom: 'Bfrtip',
         buttons: [
@@ -542,7 +544,7 @@ $(document).ready(function() {
                 text: 'CSV出力',
                 charset: 'utf-8',
                 bom: true,
-                filename: "REPLACE_CSV_FILENAME",
+                filename: 'REPLACE_CSV_FILENAME',
                 exportOptions: {
                     columns: ':visible'
                 }
@@ -550,7 +552,7 @@ $(document).ready(function() {
             {
                 extend: 'excel',
                 text: 'Excel出力',
-                filename: "REPLACE_CSV_FILENAME",
+                filename: 'REPLACE_CSV_FILENAME',
                 exportOptions: {
                     columns: ':visible'
                 }
@@ -569,12 +571,12 @@ $(document).ready(function() {
         initComplete: function () {
             this.api().columns().every(function (index) {
                 var column = this;
-                var headerCell = $(".filters th").eq($(column.header()).index());
-                var select = $('<select class="column-filter"><option value="">全て表示</option></select>')
+                var headerCell = `$('.filters th').eq(`$(column.header()).index());
+                var select = `$('<select class="column-filter"><option value="">全て表示</option></select>')
                     .appendTo(headerCell)
                     .on('change', function () {
-                        var val = $.fn.dataTable.util.escapeRegex($(this).val());
-                        column.search(val ? '^' + val + '$' : '', true, false).draw();
+                        var val = `$.fn.dataTable.util.escapeRegex(`$(this).val());
+                        column.search(val ? '^' + val + '`$' : '', true, false).draw();
                     });
                 var uniqueValues = [];
                 column.data().each(function (value, i) {
@@ -592,14 +594,15 @@ $(document).ready(function() {
         }
     });
     // Enterキーで検索実行
-    $('#dataTable_filter input').unbind();
-    $('#dataTable_filter input').bind('keyup', function(e) {
+    `$('#dataTable_filter input').unbind();
+    `$('#dataTable_filter input').bind('keyup', function(e) {
         if(e.keyCode === 13) {
             table.search(this.value).draw();
         }
     });
 });
-'@
+"@
+
     # JS中のREPLACE_CSV_FILENAMEを fileNameBase に置き換え
     $jsContent = $jsContent -replace "REPLACE_CSV_FILENAME", $fileNameBase
 
@@ -739,6 +742,37 @@ $(document).ready(function() {
     # 出力フォルダを開く
     Write-DetailLog "出力フォルダを開きます: $outputPath" -Level INFO
     Start-Process "explorer.exe" -ArgumentList $outputPath
+
+    # 問題点3: JavaScriptコードの後に必要な処理の追加
+    # 処理結果の概要を表示
+    Write-Host "`n============================================================" -ForegroundColor Cyan
+    Write-Host "処理結果の概要:" -ForegroundColor Cyan
+    Write-Host "============================================================" -ForegroundColor Cyan
+    Write-Host "総ユーザー数: $($users.Count)" -ForegroundColor White
+    Write-Host "OneDrive検出成功: $successCount" -ForegroundColor Green
+    Write-Host "OneDrive未設定/エラー: $failureCount" -ForegroundColor Yellow
+    Write-Host "`n出力ファイル:" -ForegroundColor White
+    Write-Host "HTML: $htmlFilePath" -ForegroundColor White
+    Write-Host "CSV: $csvFilePath" -ForegroundColor White
+    Write-Host "JS: $jsFilePath" -ForegroundColor White
+    Write-Host "ログ: $script:logFilePath" -ForegroundColor White
+    Write-Host "============================================================" -ForegroundColor Cyan
+
+    # 最終レポートの検証
+    $fileExists = Test-Path $htmlFilePath
+    if ($fileExists) {
+        Write-DetailLog "HTMLファイルの存在を確認しました。" -Level INFO
+        $fileSize = (Get-Item $htmlFilePath).Length
+        Write-DetailLog "HTMLファイルのサイズ: $($fileSize) バイト" -Level INFO
+        
+        if ($fileSize -gt 0) {
+            Write-DetailLog "レポート生成が正常に完了しました。" -Level INFO
+        } else {
+            Write-DetailLog "警告: HTMLファイルのサイズが0バイトです。" -Level WARNING
+        }
+    } else {
+        Write-DetailLog "エラー: HTMLファイルが見つかりません。" -Level ERROR
+    }
 }
 catch {
     Write-ErrorLog $_ "処理中にエラーが発生しました。"
