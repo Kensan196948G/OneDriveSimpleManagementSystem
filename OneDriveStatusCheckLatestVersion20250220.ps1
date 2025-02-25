@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 ﻿﻿# OneDriveStatusCheckLatestVersion20250220.ps1
+=======
+﻿# OneDriveStatusCheckLatestVersion20250220.ps1
+>>>>>>> 0bd866fa40911c521c8c38fc575eb6c2625ac363
 # HTML末尾に <script src="OneDriveStatus_XXXX.js"></script> を正しく配置し
 # CSV出力や検索・印刷などDataTablesの機能が動作するようにする
 
@@ -29,6 +33,7 @@ function Write-DetailLog {
 }
 
 function Set-EncodingEnvironment {
+<<<<<<< HEAD
     # 現在のエンコーディング設定を保存
     $script:originalOutputEncoding = [Console]::OutputEncoding
     $script:originalInputEncoding = [Console]::InputEncoding
@@ -56,6 +61,32 @@ function Restore-OriginalEncoding {
         
         $restoredEncoding = [Console]::OutputEncoding
         Write-Host ("復元後の出力エンコーディング: {0} (CodePage: {1})" -f $restoredEncoding.EncodingName, $restoredEncoding.CodePage) -ForegroundColor Green
+=======
+    $script:originalOutputEncoding = [Console]::OutputEncoding
+    $script:originalInputEncoding  = [Console]::InputEncoding
+    $currentOutputEncoding         = [Console]::OutputEncoding
+    $currentOutputCodePage         = $currentOutputEncoding.CodePage
+
+    Write-Host "現在の出力エンコーディング: $($currentOutputEncoding.EncodingName) (CodePage: $($currentOutputEncoding.CodePage))" -ForegroundColor Yellow
+    if ($currentOutputCodePage -ne 65001) {
+        Write-Host "出力エンコーディングをUTF-8に変更しています..." -ForegroundColor Yellow
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        [Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+        $newOutputEncoding        = [Console]::OutputEncoding
+        Write-Host "変更後の出力エンコーディング: $($newOutputEncoding.EncodingName) (CodePage: $($newOutputEncoding.CodePage))" -ForegroundColor Green
+    } else {
+        Write-Host "出力エンコーディングはすでにUTF-8です。変更は不要です。" -ForegroundColor Green
+    }
+}
+
+function Restore-OriginalEncoding {
+    if ($script:originalOutputEncoding -ne $null) {
+        Write-Host "元のエンコーディングに戻しています..." -ForegroundColor Yellow
+        [Console]::OutputEncoding = $script:originalOutputEncoding
+        [Console]::InputEncoding  = $script:originalInputEncoding
+        $restoredOutputEncoding   = [Console]::OutputEncoding
+        Write-Host "復元後の出力エンコーディング: $($restoredOutputEncoding.EncodingName) (CodePage: $($restoredOutputEncoding.CodePage))" -ForegroundColor Green
+>>>>>>> 0bd866fa40911c521c8c38fc575eb6c2625ac363
     }
 }
 
@@ -73,6 +104,7 @@ if (-not (Test-Path $expectedPath)) {
 
 try {
     $ErrorActionPreference = "Continue"
+<<<<<<< HEAD
     
     # 出力フォルダの作成（日付ベース）
     $outputFolderName = "OneDriveStatus." + (Get-Date -Format "yyyyMMdd")
@@ -105,10 +137,25 @@ try {
     function Write-ErrorLog {
         param(
             [System.Management.Automation.ErrorRecord]$ErrorRecord,
+=======
+    # エラーログの初期化（スクリプト開始時に必ず実行）
+    if (-not $logFilePath) {
+        $outputFolderName = "OneDriveStatus." + (Get-Date -Format "yyyyMMdd")
+        $outputPath = Join-Path $expectedPath $outputFolderName
+        New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
+        $logFilePath = Join-Path $outputPath ("OneDriveStatus_" + (Get-Date -Format "yyyyMMddHHmmss") + ".log")
+    }
+
+    # エラーハンドリング関数の定義
+    function Write-ErrorLog {
+        param(
+            [System.Management.Automation.ErrorRecord]$Error,
+>>>>>>> 0bd866fa40911c521c8c38fc575eb6c2625ac363
             [string]$CustomMessage
         )
         
         Write-DetailLog "エラーが発生しました: $CustomMessage" -Level ERROR
+<<<<<<< HEAD
         Write-DetailLog "エラーの種類: $($ErrorRecord.Exception.GetType().Name)" -Level ERROR
         Write-DetailLog "エラーメッセージ: $($ErrorRecord.Exception.Message)" -Level ERROR
         Write-DetailLog "発生場所: $($ErrorRecord.InvocationInfo.PositionMessage)" -Level ERROR
@@ -119,6 +166,18 @@ try {
         
         if ($ErrorRecord.ScriptStackTrace) {
             Write-DetailLog "スタックトレース:`n$($ErrorRecord.ScriptStackTrace)" -Level ERROR
+=======
+        Write-DetailLog "エラーの種類: $($Error.Exception.GetType().Name)" -Level ERROR
+        Write-DetailLog "エラーメッセージ: $($Error.Exception.Message)" -Level ERROR
+        Write-DetailLog "発生場所: $($Error.InvocationInfo.PositionMessage)" -Level ERROR
+        
+        if ($Error.Exception.InnerException) {
+            Write-DetailLog "内部エラー: $($Error.Exception.InnerException.Message)" -Level ERROR
+        }
+        
+        if ($Error.ScriptStackTrace) {
+            Write-DetailLog "スタックトレース:`n$($Error.ScriptStackTrace)" -Level ERROR
+>>>>>>> 0bd866fa40911c521c8c38fc575eb6c2625ac363
         }
     }
 
@@ -129,6 +188,35 @@ try {
         continue
     }
 
+<<<<<<< HEAD
+=======
+    # 出力フォルダの作成（日付ベース）
+    $outputFolderName = "OneDriveStatus." + (Get-Date -Format "yyyyMMdd")
+    $outputPath = Join-Path $expectedPath $outputFolderName
+    
+    # フォルダが既に存在する場合は削除して再作成
+    if (Test-Path $outputPath) {
+        Remove-Item $outputPath -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
+    Write-DetailLog "出力フォルダを作成しました: $outputPath" -Level INFO
+
+    # 実行時刻を使ってベースのファイル名を決定
+    $scriptStartTime = Get-Date -Format "yyyyMMddHHmmss"
+    $fileNameBase = "OneDriveStatus_${scriptStartTime}"
+
+    # 出力ファイルのパスを設定（すべて出力フォルダ内に）
+    $logFilePath = Join-Path $outputPath ("${fileNameBase}.log")
+    $htmlFilePath = Join-Path $outputPath ("${fileNameBase}.html")
+    $csvFilePath = Join-Path $outputPath ("${fileNameBase}.csv")
+    $jsFilePath = Join-Path $outputPath ("${fileNameBase}.js")
+
+    Write-DetailLog "出力ファイルの設定:" -Level INFO
+    Write-DetailLog "- ログ: $logFilePath" -Level INFO
+    Write-DetailLog "- HTML: $htmlFilePath" -Level INFO
+    Write-DetailLog "- CSV: $csvFilePath" -Level INFO
+    Write-DetailLog "- JS: $jsFilePath" -Level INFO
+>>>>>>> 0bd866fa40911c521c8c38fc575eb6c2625ac363
 
     # Microsoft Graph モジュールの確認とインストール関数
     function Install-RequiredModules {
@@ -164,6 +252,21 @@ try {
         throw "必要なモジュールの設定に失敗しました。"
     }
 
+<<<<<<< HEAD
+=======
+    # 実行時刻を使ってベースのファイル名を決定
+    $scriptStartTime = Get-Date -Format "yyyyMMddHHmmss"
+    $fileNameBase    = "OneDriveStatus_${scriptStartTime}"
+
+    # スクリプト実行フォルダ
+    $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+    # 出力ファイル(同じベース名で揃える)
+    $logFilePath  = Join-Path $scriptPath ("${fileNameBase}.log")
+    $htmlFilePath = Join-Path $scriptPath ("${fileNameBase}.html")
+    $csvFilePath  = Join-Path $scriptPath ("${fileNameBase}.csv")
+    $jsFilePath   = Join-Path $scriptPath ("${fileNameBase}.js")
+>>>>>>> 0bd866fa40911c521c8c38fc575eb6c2625ac363
 
     try {
         Write-Host "Microsoft Graph API への接続を開始します..." -ForegroundColor Yellow
@@ -377,6 +480,7 @@ try {
         }
     }
 
+<<<<<<< HEAD
     # CSVファイル出力時のエンコーディング処理を修正
     $results | ForEach-Object {
         # 文字化け防止のために各フィールドをUTF-8エンコードで処理
@@ -386,6 +490,13 @@ try {
             }
         }
     } | Export-Csv -Path $csvFilePath -Encoding UTF8 -NoTypeInformation
+=======
+    # CSVファイル出力(BOM付き UTF-8)
+    $results | Export-Csv -Path $csvFilePath -Encoding UTF8 -NoTypeInformation
+    $csvRaw   = Get-Content $csvFilePath -Raw
+    $utf8BOM  = New-Object System.Text.UTF8Encoding($true)
+    [System.IO.File]::WriteAllText($csvFilePath, $csvRaw, $utf8BOM)
+>>>>>>> 0bd866fa40911c521c8c38fc575eb6c2625ac363
 
     # JSファイルの内容 (DataTables の設定など)
     $jsContent = @'
@@ -588,7 +699,11 @@ $(document).ready(function() {
 
     Write-Host "" -ForegroundColor Green
     Write-Host "処理完了: 以下のファイルが生成されました。" -ForegroundColor Green
+<<<<<<< HEAD
     Write-Host "  ログ : $script:logFilePath" -ForegroundColor Cyan
+=======
+    Write-Host "  ログ : $logFilePath" -ForegroundColor Cyan
+>>>>>>> 0bd866fa40911c521c8c38fc575eb6c2625ac363
     Write-Host "  CSV : $csvFilePath" -ForegroundColor Cyan
     Write-Host "  HTML: $htmlFilePath" -ForegroundColor Cyan
     Write-Host "  JS  : $jsFilePath" -ForegroundColor Cyan
@@ -603,7 +718,11 @@ finally {
         Write-DetailLog "`n==== エラーサマリー ====" -Level ERROR
         Write-DetailLog "発生したエラーの総数: $($Error.Count)" -Level ERROR
         Write-DetailLog "詳細なエラーログは以下のファイルを確認してください:" -Level ERROR
+<<<<<<< HEAD
         Write-DetailLog $script:logFilePath -Level ERROR
+=======
+        Write-DetailLog $logFilePath -Level ERROR
+>>>>>>> 0bd866fa40911c521c8c38fc575eb6c2625ac363
     }
     
     Restore-OriginalEncoding
