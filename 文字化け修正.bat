@@ -1,40 +1,40 @@
 @echo off
 setlocal
 
-:: ã‚¿ã‚¤ãƒˆãƒ«è¡¨ç¤º
+:: ƒ^ƒCƒgƒ‹•\Ž¦
 cls
 echo =====================================================
-echo   PowerShellã‚¹ã‚¯ãƒªãƒ—ãƒˆæ–‡å­—åŒ–ã‘ä¿®æ­£ãƒ„ãƒ¼ãƒ«
+echo   PowerShellƒXƒNƒŠƒvƒg•¶Žš‰»‚¯C³ƒc[ƒ‹
 echo =====================================================
 echo.
-echo æ–‡å­—åŒ–ã‘è¨ºæ–­ãƒ»ä¿®æ­£GUIã‚’èµ·å‹•ã—ã¦ã„ã¾ã™...
+echo •¶Žš‰»‚¯f’fEC³GUI‚ð‹N“®‚µ‚Ä‚¢‚Ü‚·...
 echo.
 
-:: GUIãƒ„ãƒ¼ãƒ«ã®ãƒ‘ã‚¹
+:: GUIƒc[ƒ‹‚ÌƒpƒX
 set GUI_TOOL=%~dp0CharacterEncodingFixer.ps1
 
-:: ã‚¹ã‚¯ãƒªãƒ—ãƒˆå­˜åœ¨ãƒã‚§ãƒƒã‚¯
+:: ƒXƒNƒŠƒvƒg‘¶Ýƒ`ƒFƒbƒN
 if not exist "%GUI_TOOL%" (
-    echo ã‚¨ãƒ©ãƒ¼: æ–‡å­—åŒ–ã‘ä¿®æ­£ãƒ„ãƒ¼ãƒ«ãŒè¦‹ã¤ã‹ã‚Šã¾ã›ã‚“:
+    echo ƒGƒ‰[: •¶Žš‰»‚¯C³ƒc[ƒ‹‚ªŒ©‚Â‚©‚è‚Ü‚¹‚ñ:
     echo %GUI_TOOL%
     echo.
-    echo ç¶šè¡Œã™ã‚‹ã«ã¯ä½•ã‹ã‚­ãƒ¼ã‚’æŠ¼ã—ã¦ãã ã•ã„...
+    echo ‘±s‚·‚é‚É‚Í‰½‚©ƒL[‚ð‰Ÿ‚µ‚Ä‚­‚¾‚³‚¢...
     pause >nul
     exit /b 1
 )
 
-:: PowerShellã®å®Ÿè¡Œãƒãƒªã‚·ãƒ¼ã‚’ç¢ºèª
+:: PowerShell‚ÌŽÀsƒ|ƒŠƒV[‚ðŠm”F
 powershell -Command "Get-ExecutionPolicy" > "%TEMP%\pspolicy.txt"
 set /p PS_POLICY=<"%TEMP%\pspolicy.txt"
 del "%TEMP%\pspolicy.txt"
 
-:: å¿…è¦ã«å¿œã˜ã¦å®Ÿè¡Œãƒãƒªã‚·ãƒ¼ã‚’ä¸€æ™‚çš„ã«å¤‰æ›´
+:: •K—v‚É‰ž‚¶‚ÄŽÀsƒ|ƒŠƒV[‚ðˆêŽž“I‚É•ÏX
 if /i "%PS_POLICY%"=="Restricted" (
-    echo å®Ÿè¡Œãƒãƒªã‚·ãƒ¼ã‚’ä¸€æ™‚çš„ã«å¤‰æ›´ã—ã¾ã™...
+    echo ŽÀsƒ|ƒŠƒV[‚ðˆêŽž“I‚É•ÏX‚µ‚Ü‚·...
     powershell -Command "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force"
 )
 
-:: GUIãƒ„ãƒ¼ãƒ«å®Ÿè¡Œ
+:: GUIƒc[ƒ‹ŽÀs
 powershell -NoProfile -ExecutionPolicy Bypass -Command "& '%GUI_TOOL%'"
 
 endlocal
