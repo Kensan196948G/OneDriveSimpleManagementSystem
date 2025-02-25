@@ -201,69 +201,239 @@ function Get-ValidAccessToken {
         if (($script:AccessToken -eq $null) -or ($now -ge $script:TokenExpiration)) {
             Write-DetailLog "新しいアクセストークンを取得しています..." -Level INFO
             
-            # 現在のコンテキストを確認
-            $context = Get-MgContext
-            if (-not $context) {
-                Write-DetailLog "Microsoft Graph APIに接続されていません。再接続を試みます。" -Level WARNING
-                
-                # 基本的なスコープで再接続を試みる
-                $minimalScopes = @("User.Read", "Files.Read")
-                Connect-MgGraphSafely -RequiredScopes $minimalScopes
+            try {
                 $context = Get-MgContext
-                
-                if (-not $context) {
-                    Write-DetailLog "Microsoft Graph APIへの再接続に失敗しました。" -Level ERROR
+                if ($context) {
+                    $script:AccessToken = $context.AccessToken
+                    
+                    # AccessTokenExpiresOnが利用できる場合は期限を設定
+                    if ($context.ExpiresOn) {
+                        $script:TokenExpiration = $context.ExpiresOn
+                    } else {
+                        # 有効期限不明の場合は警告を表示
+                        Write-DetailLog "コンテキストから直接アクセストークンを取得しました。有効期限は不明です。" -Level WARNING
+                        # 安全のため1時間後を有効期限として設定
+                        $script:TokenExpiration = $now.AddHours(1)
+                    }
+                } else {
+                    Write-DetailLog "GraphAPIコンテキストが存在しません。再認証が必要です。" -Level ERROR
                     return $null
                 }
+            } catch {
+                Write-DetailLog "トークン取得中にエラーが発生しました: $($_.Exception.Message)" -Level ERROR
+                return $null
             }
             
-            # アクセストークンを取得
-            try {
-                # トークンの文字列を取得するためのリフレクション
-                $contextClassType = [Microsoft.Graph.PowerShell.Authentication.GraphSession].Assembly.GetType('Microsoft.Graph.PowerShell.Authentication.GraphSession')
-                $tokenProperty = $contextClassType.GetProperty('AuthContext', [System.Reflection.BindingFlags]::NonPublic -bor [System.Reflection.BindingFlags]::Instance)
-                $authContext = $tokenProperty.GetValue($context)
-                
-                # アクセストークンとその有効期限を取得
-                $tokenField = $authContext.GetType().GetProperty('AccessToken')
-                $script:AccessToken = $tokenField.GetValue($authContext)
-                
-                # 有効期限の取得
-                $expiryField = $authContext.GetType().GetProperty('AccessTokenExpiration')
-                if ($expiryField) {
-                    $script:TokenExpiration = $expiryField.GetValue($authContext)
-                    $timeUntilExpiry = ($script:TokenExpiration - $now).TotalMinutes
-                    Write-DetailLog "アクセストークンを取得しました。有効期限まで約 $([Math]::Round($timeUntilExpiry)) 分です。" -Level INFO
-                } else {
-                    # 有効期限が取得できない場合は、60分と仮定
-                    $script:TokenExpiration = $now.AddMinutes(60)
-                    Write-DetailLog "アクセストークンを取得しました。有効期限は不明ですが、60分間有効と仮定します。" -Level INFO
-                }
+            # トークンが取得できたか確認
+            if ([string]::IsNullOrEmpty($script:AccessToken)) {
+                Write-DetailLog "有効なアクセストークンがありません。再認証が必要です。" -Level ERROR
+                return $null
             }
-            catch {
-                Write-DetailLog "トークン取得中にエラーが発生しました: $($_.Exception.Message)" -Level ERROR
-                
-                # 詳細なエラー診断
-                if ($_.Exception.Message -match "権限") {
-                    Write-DetailLog "アクセス権限が不足している可能性があります。管理者権限が必要かもしれません。" -Level WARNING
-                    Show-AppRegistrationInstructions
-                }
-                
-                # 最後の手段としてコンテキストから直接アクセストークン取得を試みる
-                try {
-                    $script:AccessToken = $context.AccessToken
-                    Write-DetailLog "コンテキストから直接アクセストークンを取得しました。有効期限は不明です。" -Level WARNING
-                }
-                catch {
-                    Write-DetailLog "コンテキストからのトークン取得も失敗しました。" -Level ERROR
-                    return $null
-                }
-            }
+            
+            # 管理者権限の確認
+            $script:IsAdmin = Test-IsGlobalAdmin
         }
         
         # 一般ユーザー向けのメッセージ
         if (-not $script:IsAdmin -and $script:AccessToken) {
-            Write-DetailLog "一般ユーザー権限でアクセストークンを使用します。一部の情報は取得できない場合があります。" -Level INFO
+            Write-DetailLog "一般ユーザー権限では一部の情報にアクセスできません。自分のOneDrive情報のみ取得可能です。" -Level INFO
+        }
+        
+        return $script:AccessToken
+    }
+    catch {
+        Write-DetailLog "アクセストークンの取得に失敗しました: $($_.Exception.Message)" -Level ERROR
+        Write-ErrorLog $_ "アクセストークン処理中のエラー"
+        return $null
+    }
+}
+
+function Set-EncodingEnvironment {
+    # 現在のエンコーディング設定を保存
+    $script:originalOutputEncoding = [Console]::OutputEncoding
+    $script:originalInputEncoding = [Console]::InputEncoding
+    
+    # 現在のエンコーディング情報を表示
+    $currentEncoding = [Console]::OutputEncoding
+    Write-Host "現在の出力エンコーディング: $($currentEncoding.EncodingName) (CodePage: $($currentEncoding.CodePage))" -ForegroundColor Yellow
+    
+    # PowerShellのエンコーディングをUTF-8に設定
+    if ($currentEncoding.CodePage -ne 65001) {
+        Write-Host "出力エンコーディングをUTF-8に変更しています..." -ForegroundColor Yellow
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        [Console]::InputEncoding = [System.Text.Encoding]::UTF8
+        $OutputEncoding = [System.Text.Encoding]::UTF8
+        $PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
+        $PSDefaultParameterValues['*:Encoding'] = 'utf8'
+        
+        $newEncoding = [Console]::OutputEncoding
+        Write-Host "変更後の出力エンコーディング: $($newEncoding.EncodingName) (CodePage: $($newEncoding.CodePage))" -ForegroundColor Green
+    } else {
+        Write-Host "出力エンコーディングはすでにUTF-8です。変更は不要です。" -ForegroundColor Green
+    }
+    
+    # 環境変数も設定
+    $env:PYTHONIOENCODING = "utf-8"
+    [System.Environment]::SetEnvironmentVariable('PYTHONIOENCODING', 'utf-8', 'Process')
+}
+
+function Restore-OriginalEncoding {
+    if ($script:originalOutputEncoding) {
+        Write-Host "元のエンコーディングに戻しています..." -ForegroundColor Yellow
+        [Console]::OutputEncoding = $script:originalOutputEncoding
+        [Console]::InputEncoding = $script:originalInputEncoding
+        $OutputEncoding = $script:originalOutputEncoding
+        
+        $restoredEncoding = [Console]::OutputEncoding
+        Write-Host "復元後の出力エンコーディング: $($restoredEncoding.EncodingName) (CodePage: $($restoredEncoding.CodePage))" -ForegroundColor Green
+    }
+}
+
+# Microsoft Azure ADポータルでアプリケーションの登録を確認・修正する手順を表示する関数
+function Show-AppRegistrationInstructions {
+    Write-Host "`n=================================================" -ForegroundColor Yellow
+    Write-Host "  Microsoft Graph API 権限設定の確認方法" -ForegroundColor Yellow
+    Write-Host "=================================================" -ForegroundColor Yellow
+    Write-Host "1. Azure ADポータル (https://portal.azure.com) にグローバル管理者でサインイン"
+    Write-Host "2. 「Azure Active Directory」→「アプリの登録」を選択"
+    Write-Host "3. 「Microsoft Graph Command Line Tools」または類似名のアプリを探して選択"
+    Write-Host "4. 「API のアクセス許可」を選択"
+    Write-Host "5. 以下の権限が付与されているか確認:"
+    Write-Host "   - User.Read.All"
+    Write-Host "   - Files.Read.All"
+    Write-Host "6. 「(テナント名) に管理者の同意を与える」ボタンをクリック"
+    Write-Host "7. 不足している権限がある場合は「アクセス許可の追加」で追加"
+    Write-Host "8. 追加後、再度「管理者の同意を与える」をクリック"
+    Write-Host "=================================================" -ForegroundColor Yellow
+    
+    $checkPermissions = Read-Host "アプリケーション権限を確認しますか？ (y/n)"
+    if ($checkPermissions -eq "y") {
+        Start-Process "https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
+    }
+}
+
+# アクセストークンの管理のためのグローバル変数
+$script:AccessToken = $null
+$script:TokenExpiration = [DateTime]::MinValue
+$script:IsAdmin = $false
+$script:CurrentUserId = $null
+
+# 管理者権限の確認関数（/me エンドポイントを回避）
+function Test-IsGlobalAdmin {
+    try {
+        # ユーザー自身のIDを取得
+        if (-not $script:CurrentUserId) {
+            $context = Get-MgContext
+            if (-not $context) {
+                Write-DetailLog "認証コンテキストを取得できません。" -Level ERROR
+                return $false
+            }
+            
+            # ユーザープリンシパル名でユーザーを検索
+            try {
+                $filter = "userPrincipalName eq '$($context.Account)'"
+                $user = Get-MgUser -Filter $filter -ErrorAction Stop
+                if ($user) {
+                    $script:CurrentUserId = $user.Id
+                    Write-DetailLog "現在のユーザーID: $($script:CurrentUserId)" -Level INFO
+                }
+                else {
+                    Write-DetailLog "現在のユーザーを取得できませんでした。" -Level WARNING
+                    return $false
+                }
+            }
+            catch {
+                Write-DetailLog "現在のユーザーID取得中にエラー: $($_.Exception.Message)" -Level WARNING
+                return $false
+            }
+        }
+        
+        # ロールの確認
+        try {
+            $roles = Get-MgUserMemberOf -UserId $script:CurrentUserId -All -ErrorAction Stop
+            
+            # ロールとグループのチェック
+            $adminRoles = @(
+                'Global Administrator',
+                'Company Administrator',
+                'SharePoint Administrator',
+                'Global Reader',
+                'Teams Administrator',
+                'OneDrive管理者',
+                'SharePoint管理者',
+                'グローバル管理者'
+            )
+            
+            foreach ($role in $roles) {
+                $roleType = $role.AdditionalProperties.'@odata.type'
+                $displayName = $role.AdditionalProperties.displayName
+                
+                if (($roleType -eq "#microsoft.graph.directoryRole" -or 
+                     $roleType -eq "#microsoft.graph.group") -and 
+                    ($adminRoles -contains $displayName)) {
+                    Write-DetailLog "管理者ロールを発見: $displayName" -Level INFO
+                    return $true
+                }
+            }
+            
+            Write-DetailLog "ユーザーは管理者ロールを持っていません。" -Level INFO
+            return $false
+        }
+        catch {
+            Write-DetailLog "ロール確認中にエラー: $($_.Exception.Message)" -Level WARNING
+            return $false
+        }
+    }
+    catch {
+        Write-DetailLog "管理者権限の確認中にエラーが発生しました: $($_.Exception.Message)" -Level WARNING
+        return $false
+    }
+}
+
+# アクセストークンを取得する関数
+function Get-ValidAccessToken {
+    try {
+        # トークンが有効期限切れか確認
+        $now = [DateTime]::UtcNow
+        if (($script:AccessToken -eq $null) -or ($now -ge $script:TokenExpiration)) {
+            Write-DetailLog "新しいアクセストークンを取得しています..." -Level INFO
+            
+            try {
+                $context = Get-MgContext
+                if ($context) {
+                    $script:AccessToken = $context.AccessToken
+                    
+                    # AccessTokenExpiresOnが利用できる場合は期限を設定
+                    if ($context.ExpiresOn) {
+                        $script:TokenExpiration = $context.ExpiresOn
+                    } else {
+                        # 有効期限不明の場合は警告を表示
+                        Write-DetailLog "コンテキストから直接アクセストークンを取得しました。有効期限は不明です。" -Level WARNING
+                        # 安全のため1時間後を有効期限として設定
+                        $script:TokenExpiration = $now.AddHours(1)
+                    }
+                } else {
+                    Write-DetailLog "GraphAPIコンテキストが存在しません。再認証が必要です。" -Level ERROR
+                    return $null
+                }
+            } catch {
+                Write-DetailLog "トークン取得中にエラーが発生しました: $($_.Exception.Message)" -Level ERROR
+                return $null
+            }
+            
+            # トークンが取得できたか確認
+            if ([string]::IsNullOrEmpty($script:AccessToken)) {
+                Write-DetailLog "有効なアクセストークンがありません。再認証が必要です。" -Level ERROR
+                return $null
+            }
+            
+            # 管理者権限の確認
+            $script:IsAdmin = Test-IsGlobalAdmin
+        }
+        
+        # 一般ユーザー向けのメッセージ
+        if (-not $script:IsAdmin -and $script:AccessToken) {
+            Write-DetailLog "一般ユーザー権限では一部の情報にアクセスできません。自分のOneDrive情報のみ取得可能です。" -Level INFO
         }
         
         return $script:AccessToken
@@ -450,22 +620,28 @@ function Connect-MgGraphSafely {
 # 安全にプロパティ値を取得する関数
 function Get-SafePropertyValue {
     param(
-        [Parameter(Mandatory=$true)]
-        [PSObject]$InputObject,
+        [Parameter()]
+        $InputObject,
         
         [Parameter(Mandatory=$true)]
         [string]$PropertyName,
         
-        [Parameter(Mandatory=$false)]
-        $DefaultValue = 0
+        $DefaultValue = $null
     )
     
     try {
-        if ($null -eq $InputObject) { return $DefaultValue }
-        if (-not (Get-Member -InputObject $InputObject -Name $PropertyName -ErrorAction SilentlyContinue)) { return $DefaultValue }
-        $value = $InputObject.$PropertyName
-        if ($null -eq $value) { return $DefaultValue }
-        return $value
+        # InputObjectがnullの場合はデフォルト値を返す
+        if ($null -eq $InputObject) {
+            return $DefaultValue
+        }
+        
+        if ($InputObject.PSObject.Properties.Match($PropertyName).Count -gt 0) {
+            $value = $InputObject.$PropertyName
+            if ($null -ne $value) {
+                return $value
+            }
+        }
+        return $DefaultValue
     }
     catch {
         Write-DetailLog "プロパティ '$PropertyName' の取得に失敗しました: $($_.Exception.Message)" -Level WARNING
@@ -476,109 +652,107 @@ function Get-SafePropertyValue {
 # OneDriveの状態を取得する関数
 function Get-OneDriveStatus {
     param (
-        [string]$userId,
-        [switch]$SelfOnly
+        [switch]$CurrentUserOnly
     )
     
     try {
-        # 自分自身のユーザーIDを使用する場合、CurrentUserIdを使用
-        if ($userId -eq "me" -and $script:CurrentUserId) {
-            $userId = $script:CurrentUserId
-            Write-DetailLog "'me'エンドポイントを避け、具体的なユーザーID '$userId' を使用します" -Level INFO
-        }
+        Write-DetailLog "OneDriveステータスの取得を開始します..." -Level INFO
         
-        # 現在のユーザーと同じか確認
-        $currentContext = Get-MgContext
-        $isSelf = ($userId -eq $script:CurrentUserId -or $userId -eq "me")
+        $users = @()
         
-        # 一般ユーザーで他のユーザーのOneDriveにアクセスしようとしている場合
-        if (-not $script:IsAdmin -and -not $isSelf -and -not $SelfOnly) {
-            Write-DetailLog "管理者権限がないため、他のユーザー '$userId' のOneDrive情報は取得できません" -Level WARNING
-            return $null
-        }
-        
-        # ユーザーの存在確認
-        try {
-            Write-DetailLog "ユーザー $userId のOneDrive情報を取得中..." -Level INFO
-            $user = Get-MgUser -UserId $userId -ErrorAction Stop
-            if (-not $user) {
-                Write-DetailLog "ユーザー $userId が見つかりません" -Level ERROR
-                return $null
-            }
-        }
-        catch {
-            if ($_.Exception.Message -match "Unauthorized" -or $_.Exception.Message -match "権限がありません") {
-                Write-DetailLog "ユーザー情報の取得に必要な権限がありません。管理者権限が必要です。" -Level ERROR
-                return $null
-            }
-            Write-DetailLog "ユーザー情報の取得中にエラーが発生: $($_.Exception.Message)" -Level ERROR
-            return $null
-        }
-
-        # 有効なアクセストークンを確保
-        $token = Get-ValidAccessToken
-        if (-not $token) {
-            Write-DetailLog "有効なアクセストークンがありません。再認証が必要です。" -Level ERROR
+        # 一般ユーザーか管理者かによって処理を分岐
+        if ($CurrentUserOnly -or -not $script:IsAdmin) {
+            Write-DetailLog "自分のOneDrive情報の取得を続行します..." -Level INFO
             
-            # 一般ユーザーの場合の追加情報
-            if (-not $script:IsAdmin) {
-                Write-DetailLog "一般ユーザー権限では一部の情報にアクセスできません。自分のOneDrive情報のみ取得可能です。" -Level INFO
+            try {
+                # 現在のユーザー情報を取得
+                $currentUser = Get-MgUser -UserId $script:CurrentUserId
                 
-                # 自分自身のOneDriveのみ取得を試みる
-                if ($isSelf) {
-                    Write-DetailLog "自分のOneDrive情報の取得を続行します..." -Level INFO
-                } else {
-                    return $null
+                if ($null -ne $currentUser) {
+                    # ユーザーのOneDriveサイトを取得
+                    $driveId = $null
+                    $drive = $null
+                    
+                    try {
+                        $drive = Get-MgUserDrive -UserId $currentUser.Id
+                        if ($drive) {
+                            $driveId = $drive.Id
+                        }
+                    }
+                    catch {
+                        Write-DetailLog "ユーザー $($currentUser.DisplayName) のOneDriveにアクセスできません: $($_.Exception.Message)" -Level WARNING
+                    }
+                    
+                    # 使用容量と割り当て容量を取得
+                    $usedSpace = 0
+                    $totalSpace = 0
+                    $usedPercentage = 0
+                    $lastActivityDate = $null
+                    
+                    if ($null -ne $drive) {
+                        # quotaプロパティがnullでないことを確認
+                        $quota = $drive.Quota
+                        
+                        if ($null -ne $quota) {
+                            $usedSpace = Get-SafePropertyValue -InputObject $quota -PropertyName "Used" -DefaultValue 0
+                            $totalSpace = Get-SafePropertyValue -InputObject $quota -PropertyName "Total" -DefaultValue 0
+                            
+                            if ($totalSpace -gt 0) {
+                                $usedPercentage = [math]::Round(($usedSpace / $totalSpace) * 100, 2)
+                            }
+                        }
+                        
+                        # GB単位に変換
+                        $usedSpaceGB = [math]::Round($usedSpace / 1GB, 2)
+                        $totalSpaceGB = [math]::Round($totalSpace / 1GB, 2)
+                        
+                        # 最終アクセス日時の取得を試行
+                        try {
+                            $items = Get-MgUserDriveRoot -UserId $currentUser.Id -ExpandProperty "children" -Top 1
+                            if ($items -and $items.Value.Count -gt 0) {
+                                $lastActivityDate = $items.Value[0].LastModifiedDateTime
+                            }
+                        }
+                        catch {
+                            Write-DetailLog "ユーザー $($currentUser.DisplayName) のOneDriveアイテムにアクセスできません" -Level WARNING
+                        }
+                        
+                        # ユーザー情報を配列に追加
+                        $userObject = [PSCustomObject]@{
+                            UserId = $currentUser.Id
+                            Name = $currentUser.DisplayName
+                            UserPrincipalName = $currentUser.UserPrincipalName
+                            Mail = $currentUser.Mail
+                            IsActive = $true
+                            UsedSpace = $usedSpaceGB
+                            TotalSpace = $totalSpaceGB
+                            UsedPercentage = $usedPercentage
+                            LastActivity = $lastActivityDate
+                        }
+                        
+                        $users += $userObject
+                    }
+                    else {
+                        Write-DetailLog "ユーザー $($currentUser.DisplayName) のOneDriveが見つかりません" -Level WARNING
+                    }
                 }
-            } else {
-                return $null
+                else {
+                    Write-DetailLog "現在のユーザー情報が取得できません" -Level ERROR
+                }
             }
+            catch {
+                Write-ErrorLog $_ "処理中にエラーが発生しました。"
+            }
+        }
+        else {
+            # ...existing code (管理者向けの処理)...
         }
         
-        try {
-            # OneDriveの情報を取得（APIエンドポイントの例、実際の実装に合わせて調整）
-            $driveData = Get-MgUserDrive -UserId $userId -ErrorAction Stop
-            
-            if (-not $driveData) {
-                Write-DetailLog "ユーザー $userId のOneDriveが見つからないか、アクセスできません" -Level WARNING
-                return $null
-            }
-            
-            # OneDriveの詳細情報を取得
-            $quotaInfo = $driveData.Quota
-            
-            # 返却するデータを構築
-            $oneDriveInfo = [PSCustomObject]@{
-                ユーザーID = $userId
-                氏名 = "$($user.DisplayName)"
-                ログオンアカウント名 = "$($user.UserPrincipalName)".Split('@')[0]
-                メールアドレス = "$($user.Mail)"
-                合計容量GB = [math]::Round((Get-SafePropertyValue -InputObject $quotaInfo -PropertyName 'Total' -DefaultValue 0) / 1GB, 2)
-                使用容量GB = [math]::Round((Get-SafePropertyValue -InputObject $quotaInfo -PropertyName 'Used' -DefaultValue 0) / 1GB, 2)
-                残り容量GB = [math]::Round((Get-SafePropertyValue -InputObject $quotaInfo -PropertyName 'Remaining' -DefaultValue 0) / 1GB, 2)
-                使用率 = [math]::Round((Get-SafePropertyValue -InputObject $quotaInfo -PropertyName 'Used' -DefaultValue 0) / (Get-SafePropertyValue -InputObject $quotaInfo -PropertyName 'Total' -DefaultValue 1) * 100, 1)
-                状態 = "$($quotaInfo.State)"
-                DriveId = "$($driveData.Id)"
-                WebUrl = "$($driveData.WebUrl)"
-            }
-            
-            return $oneDriveInfo
-        }
-        catch {
-            # エラーの種類に応じたメッセージを表示
-            if ($_.Exception.Message -match "Unauthorized" -or $_.Exception.Message -match "権限がありません") {
-                Write-DetailLog "OneDrive情報へのアクセス権限がありません。必要なスコープ: Files.Read.All" -Level ERROR
-            } else {
-                Write-DetailLog "OneDrive情報の取得中にエラーが発生: $($_.Exception.Message)" -Level ERROR
-            }
-            Write-ErrorLog $_ "OneDrive情報取得エラー"
-            return $null
-        }
+        return $users
     }
     catch {
-        Write-DetailLog "OneDrive情報の取得中にエラーが発生: $($_.Exception.Message)" -Level ERROR
-        Write-ErrorLog $_ "OneDrive処理中のエラー"
-        return $null
+        Write-ErrorLog $_ "OneDriveステータスの取得中にエラーが発生しました"
+        return @()
     }
 }
 
