@@ -1,5 +1,5 @@
-﻿@echo off
-chcp 932 > nul
+﻿﻿@echo off
+chcp 65001 > nul
 setlocal EnableDelayedExpansion
 
 echo =====================================================
@@ -58,11 +58,11 @@ powershell.exe -Command "if (-not (Get-Module -ListAvailable Microsoft.Graph.Fil
 
 echo.
 echo 4. スクリプトファイルのエンコーディングをUTF-8に修正しています...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%修正ツール\EncodingCheck.ps1" -FixAutomatically
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$targetPath = '%SCRIPT_DIR%'; $extensions = @('*.ps1', '*.psm1', '*.bat', '*.cmd', '*.md', '*.txt', '*.json'); $files = Get-ChildItem -Path $targetPath -Include $extensions -Recurse -File; foreach ($file in $files) { $content = [System.IO.File]::ReadAllText($file.FullName, [System.Text.Encoding]::Default); [System.IO.File]::WriteAllText($file.FullName, $content, [System.Text.Encoding]::UTF8); Write-Host ('変換: ' + $file.FullName) }"
 
 echo.
 echo 5. OneDrive運用ツールを起動します...
-start "" "%SCRIPT_DIR%OneDriveReportShortcut.bat"
+call "%SCRIPT_DIR%OneDriveReportShortcut.bat"
 
 echo.
 echo セットアップが完了しました！

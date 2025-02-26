@@ -1,42 +1,42 @@
-@echo off
+ï»¿@echo off
 setlocal enabledelayedexpansion
 
-:: ƒ^ƒCƒgƒ‹•\Ž¦
+:: ï¿½^ï¿½Cï¿½gï¿½ï¿½ï¿½\ï¿½ï¿½
 REM chcp 65001 > nul
 cls
 echo =====================================================
-echo   PowerShellƒXƒNƒŠƒvƒg•¶Žš‰»‚¯C³ƒc[ƒ‹
+echo   PowerShellï¿½Xï¿½Nï¿½ï¿½ï¿½vï¿½gï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Cï¿½ï¿½ï¿½cï¿½[ï¿½ï¿½
 echo =====================================================
 echo.
-echo •¶Žš‰»‚¯C³—pGUIƒc[ƒ‹‚ð‹N“®‚µ‚Ä‚¢‚Ü‚·...
+echo ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Cï¿½ï¿½ï¿½pGUIï¿½cï¿½[ï¿½ï¿½ï¿½ï¿½Nï¿½ï¿½ï¿½ï¿½ï¿½Ä‚ï¿½ï¿½Ü‚ï¿½...
 echo.
 
-:: GUIƒc[ƒ‹‚ÌƒpƒX
+:: GUIï¿½cï¿½[ï¿½ï¿½ï¿½Ìƒpï¿½X
 set GUI_TOOL=%~dp0CharacterEncodingFixer.ps1
 
-:: ƒXƒNƒŠƒvƒg‘¶Ýƒ`ƒFƒbƒN
+:: ï¿½Xï¿½Nï¿½ï¿½ï¿½vï¿½gï¿½ï¿½ï¿½Ýƒ`ï¿½Fï¿½bï¿½N
 if not exist "%GUI_TOOL%" (
-    echo ƒGƒ‰[: •¶Žš‰»‚¯C³ƒc[ƒ‹‚ªŒ©‚Â‚©‚è‚Ü‚¹‚ñ:
+    echo ï¿½Gï¿½ï¿½ï¿½[: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Cï¿½ï¿½ï¿½cï¿½[ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â‚ï¿½ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½:
     echo %GUI_TOOL%
     echo.
-    echo I—¹‚·‚é‚É‚Í‰½‚©ƒL[‚ð‰Ÿ‚µ‚Ä‚­‚¾‚³‚¢...
+    echo ï¿½Iï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É‚Í‰ï¿½ï¿½ï¿½ï¿½Lï¿½[ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä‚ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½...
     pause >nul
     exit /b 1
 )
 
-:: PowerShell‚ÌŽÀsƒ|ƒŠƒV[‚ðŠm”F
+:: PowerShellï¿½ÌŽï¿½ï¿½sï¿½|ï¿½ï¿½ï¿½Vï¿½[ï¿½ï¿½mï¿½F
 powershell -Command "Get-ExecutionPolicy" > "%TEMP%\pspolicy.txt"
 set /p PS_POLICY=<"%TEMP%\pspolicy.txt"
 del "%TEMP%\pspolicy.txt"
 
-:: •K—v‚É‰ž‚¶‚ÄŽÀsƒ|ƒŠƒV[‚ðˆêŽž“I‚É•ÏX
+:: ï¿½Kï¿½vï¿½É‰ï¿½ï¿½ï¿½ï¿½ÄŽï¿½ï¿½sï¿½|ï¿½ï¿½ï¿½Vï¿½[ï¿½ï¿½êŽžï¿½Iï¿½É•ÏX
 if /i "%PS_POLICY%"=="Restricted" (
-    echo ŽÀsƒ|ƒŠƒV[‚ðˆêŽž“I‚É•ÏX‚µ‚Ü‚·...
+    echo ï¿½ï¿½ï¿½sï¿½|ï¿½ï¿½ï¿½Vï¿½[ï¿½ï¿½êŽžï¿½Iï¿½É•ÏXï¿½ï¿½ï¿½Ü‚ï¿½...
     powershell -Command "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force"
 )
 
-:: GUIƒc[ƒ‹ŽÀsiŠÇ—ŽÒŒ ŒÀ‚Å‚à³‚µ‚­“ú–{Œê•\Ž¦‚³‚ê‚é‚æ‚¤‚ÉÝ’èj
-echo PowerShellƒXƒNƒŠƒvƒg‚ðŽÀs’†...
+:: GUIï¿½cï¿½[ï¿½ï¿½ï¿½ï¿½ï¿½sï¿½iï¿½Ç—ï¿½ï¿½ÒŒï¿½ï¿½ï¿½ï¿½Å‚ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½{ï¿½ï¿½\ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ‚¤ï¿½ÉÝ’ï¿½j
+echo PowerShellï¿½Xï¿½Nï¿½ï¿½ï¿½vï¿½gï¿½ï¿½ï¿½ï¿½sï¿½ï¿½...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "& { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; & '%GUI_TOOL%' }"
 
 endlocal

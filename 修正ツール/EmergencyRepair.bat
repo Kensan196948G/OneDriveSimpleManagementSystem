@@ -1,119 +1,119 @@
-@echo off
+﻿@echo off
 chcp 65001 > nul
 setlocal EnableDelayedExpansion
 
 echo =====================================================
-echo   OneDrive�c�[���ً}�C�����[�e�B���e�B
+echo   OneDriveツール緊急修復ユーティリティ
 echo =====================================================
 echo.
-echo ���̃c�[����OneDrive�^�p�c�[���ً̋}�C�����s���܂��B
-echo ������������s�G���[���������Ă���ꍇ�Ɏg�p���Ă��������B
+echo このツールはOneDrive運用ツールの緊急修復を実行します。
+echo システムが実行エラーを起こしている場合に使用してください。
 echo.
 
-REM �Ǘ��Ҍ����`�F�b�N
+REM 管理者権限チェック
 net session >nul 2>&1
 if %errorLevel% neq 0 (
-    echo �x��: ���̃X�N���v�g�͊Ǘ��Ҍ����Ȃ��Ŏ��s����Ă��܂��B
-    echo �ꕔ�̑��삪���s����\��������܂��B
-    echo �Ǘ��҂Ƃ��čĎ��s���邱�Ƃ𐄏����܂��B
+    echo 警告: このスクリプトは管理者権限なしで実行されています。
+    echo 一部の操作が実行できない可能性があります。
+    echo 管理者として再実行することを推奨します。
     echo.
     pause
 )
 
-REM ���݂̃f�B���N�g���ƃv���W�F�N�g���[�g��ݒ�
+REM 現在のディレクトリとプロジェクトルートを設定
 set TOOL_DIR=%~dp0
 cd /d %TOOL_DIR%
 cd ..
 set PROJECT_ROOT=%CD%
 
-echo ��ƃf�B���N�g��: %PROJECT_ROOT%
+echo 作業ディレクトリ: %PROJECT_ROOT%
 echo.
 
-echo �X�e�b�v 1: PowerShell�̎��s�|���V�[���m�F�E�ݒ蒆...
+echo ステップ 1: PowerShellの実行ポリシーを確認・設定中...
 powershell -Command "Get-ExecutionPolicy" > %TEMP%\ExecPolicy.txt
 set /p EXEC_POLICY=<%TEMP%\ExecPolicy.txt
 del %TEMP%\ExecPolicy.txt
-echo ���݂̎��s�|���V�[: %EXEC_POLICY%
+echo 現在の実行ポリシー: %EXEC_POLICY%
 
 if "%EXEC_POLICY%"=="Restricted" (
-    echo ���s�|���V�[���ꎞ�I�ɕύX���܂�...
+    echo 実行ポリシーを一時的に変更します...
     powershell -Command "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force"
-    echo ���s�|���V�[��ύX���܂����B
+    echo 実行ポリシーを変更しました。
 )
 
 echo.
-echo �X�e�b�v 2: UTF-8�G���R�[�h�����m�F���Ă��܂�...
+echo ステップ 2: UTF-8エンコードを確認しています...
 powershell -Command "[Console]::OutputEncoding.CodePage" > %TEMP%\Encoding.txt
 set /p ENCODING=<%TEMP%\Encoding.txt
 del %TEMP%\Encoding.txt
 
-echo ���݂̃G���R�[�f�B���O: %ENCODING%
+echo 現在のエンコーディング: %ENCODING%
 if not "%ENCODING%"=="65001" (
-    echo �x��: �V�X�e���̃G���R�[�f�B���O��UTF-8�ł͂���܂���B
+    echo 警告: システムのエンコーディングがUTF-8ではありません。
 )
 
 echo.
-echo �X�e�b�v 3: �K�v�ȃt�H���_�̑��݊m�F�E�쐬...
+echo ステップ 3: 必要なフォルダの存在確認・作成...
 if not exist "%PROJECT_ROOT%\logs" (
     mkdir "%PROJECT_ROOT%\logs"
-    echo logs �t�H���_���쐬���܂���
+    echo logs フォルダを作成しました
 )
 
-if not exist "%PROJECT_ROOT%\�f�f" (
-    mkdir "%PROJECT_ROOT%\�f�f"
-    echo �f�f �t�H���_���쐬���܂���
+if not exist "%PROJECT_ROOT%\診断" (
+    mkdir "%PROJECT_ROOT%\診断"
+    echo 診断 フォルダを作成しました
 )
 
-if not exist "%PROJECT_ROOT%\�C���c�[��" (
-    mkdir "%PROJECT_ROOT%\�C���c�[��"
-    echo �C���c�[�� �t�H���_���쐬���܂���
+if not exist "%PROJECT_ROOT%\修正ツール" (
+    mkdir "%PROJECT_ROOT%\修正ツール"
+    echo 修正ツール フォルダを作成しました
 )
 
 echo.
-echo �X�e�b�v 4: �X�N���v�g�G���R�[�f�B���O�̏C��...
+echo ステップ 4: スクリプトエンコーディングの修正...
 
-echo [A] �K�{�X�N���v�g�̃G���R�[�f�B���O���C�����Ă��܂�...
+echo [A] 必須スクリプトのエンコーディングを修正しています...
 set IMPORTANT_SCRIPTS=OneDriveStatusCheck.ps1
 
 for %%s in (%IMPORTANT_SCRIPTS%) do (
     if exist "%PROJECT_ROOT%\%%s" (
-        echo     %%s ���C����...
+        echo     %%s を修正中...
         powershell -NoProfile -Command "$content = [System.IO.File]::ReadAllText('%PROJECT_ROOT%\%%s', [System.Text.Encoding]::Default); [System.IO.File]::WriteAllText('%PROJECT_ROOT%\%%s', $content, [System.Text.Encoding]::UTF8)"
-        echo     %%s ���C�����܂���
+        echo     %%s を修正しました
     ) else (
-        echo     �x��: %%s ��������܂���
+        echo     警告: %%s が見つかりません
     )
 )
 
-echo [B] �o�b�`�t�@�C���̃G���R�[�f�B���O���C�����Ă��܂�...
+echo [B] バッチファイルのエンコーディングを修正しています...
 for %%f in ("%PROJECT_ROOT%\*.bat") do (
-    echo     %%~nxf ���C����...
+    echo     %%~nxf を修正中...
     powershell -NoProfile -Command "$content = [System.IO.File]::ReadAllText('%%f', [System.Text.Encoding]::Default); [System.IO.File]::WriteAllText('%%f', $content, [System.Text.Encoding]::UTF8)"
 )
 
 echo.
-echo �X�e�b�v 5: �G���R�[�f�B���O�C���c�[���̏���...
-echo CreateFixerScript.ps1�����s���ďC���c�[���𐶐����Ă��܂�...
+echo ステップ 5: エンコーディング修正ツールの準備...
+echo CreateFixerScript.ps1を実行して修正ツールを生成しています...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%TOOL_DIR%CreateFixerScript.ps1"
 
 echo.
-echo �X�e�b�v 6: PowerShell���W���[���̏�Ԃ��m�F...
+echo ステップ 6: PowerShellモジュールの状態を確認...
 powershell -NoProfile -Command "Get-Module -ListAvailable Microsoft.Graph.* | Format-Table Name, Version"
 
 echo.
 echo =====================================================
-echo   �ً}�C���������������܂���
+echo   緊急修復処理が完了しました
 echo =====================================================
 echo.
-echo ��肪�������Ȃ��ꍇ�͈ȉ��������Ă�������:
+echo 問題が解決しない場合は以下を試してください:
 echo.
-echo 1. EncodingFixer.bat�����s���ăX�N���v�g���C��
-echo 2. PowerShell���Ǘ��҂Ƃ��Ď��s���A�ȉ��̃R�}���h�����s:
+echo 1. EncodingFixer.batを実行してスクリプトを修正
+echo 2. PowerShellを管理者として実行し、以下のコマンドを実行:
 echo    Install-Module Microsoft.Graph.Users -Force
 echo    Install-Module Microsoft.Graph.Files -Force
 echo    Install-Module Microsoft.Graph.Authentication -Force
 echo.
-echo 3. OneDriveStatusCheck.ps1�̎��s���Ɉȉ��̃p�����[�^��ǉ�:
+echo 3. OneDriveStatusCheck.ps1の実行時に以下のパラメータを追加:
 echo    -ClearAuth
 echo.
 

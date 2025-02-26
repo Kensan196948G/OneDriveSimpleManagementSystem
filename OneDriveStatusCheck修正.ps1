@@ -1,4 +1,4 @@
-#
+﻿#
 # OneDriveStatusCheck.ps1のエラー修正スクリプト
 # 構文エラーがあるOneDriveStatusCheck.ps1を修正します
 #
