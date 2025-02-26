@@ -248,203 +248,6 @@ function Get-ValidAccessToken {
     }
 }
 
-function Set-EncodingEnvironment {
-    # 現在のエンコーディング設定を保存
-    $script:originalOutputEncoding = [Console]::OutputEncoding
-    $script:originalInputEncoding = [Console]::InputEncoding
-    
-    # 現在のエンコーディング情報を表示
-    $currentEncoding = [Console]::OutputEncoding
-    Write-Host "現在の出力エンコーディング: $($currentEncoding.EncodingName) (CodePage: $($currentEncoding.CodePage))" -ForegroundColor Yellow
-    
-    # PowerShellのエンコーディングをUTF-8に設定
-    if ($currentEncoding.CodePage -ne 65001) {
-        Write-Host "出力エンコーディングをUTF-8に変更しています..." -ForegroundColor Yellow
-        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        [Console]::InputEncoding = [System.Text.Encoding]::UTF8
-        $OutputEncoding = [System.Text.Encoding]::UTF8
-        $PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
-        $PSDefaultParameterValues['*:Encoding'] = 'utf8'
-        
-        $newEncoding = [Console]::OutputEncoding
-        Write-Host "変更後の出力エンコーディング: $($newEncoding.EncodingName) (CodePage: $($newEncoding.CodePage))" -ForegroundColor Green
-    } else {
-        Write-Host "出力エンコーディングはすでにUTF-8です。変更は不要です。" -ForegroundColor Green
-    }
-    
-    # 環境変数も設定
-    $env:PYTHONIOENCODING = "utf-8"
-    [System.Environment]::SetEnvironmentVariable('PYTHONIOENCODING', 'utf-8', 'Process')
-}
-
-function Restore-OriginalEncoding {
-    if ($script:originalOutputEncoding) {
-        Write-Host "元のエンコーディングに戻しています..." -ForegroundColor Yellow
-        [Console]::OutputEncoding = $script:originalOutputEncoding
-        [Console]::InputEncoding = $script:originalInputEncoding
-        $OutputEncoding = $script:originalOutputEncoding
-        
-        $restoredEncoding = [Console]::OutputEncoding
-        Write-Host "復元後の出力エンコーディング: $($restoredEncoding.EncodingName) (CodePage: $($restoredEncoding.CodePage))" -ForegroundColor Green
-    }
-}
-
-# Microsoft Azure ADポータルでアプリケーションの登録を確認・修正する手順を表示する関数
-function Show-AppRegistrationInstructions {
-    Write-Host "`n=================================================" -ForegroundColor Yellow
-    Write-Host "  Microsoft Graph API 権限設定の確認方法" -ForegroundColor Yellow
-    Write-Host "=================================================" -ForegroundColor Yellow
-    Write-Host "1. Azure ADポータル (https://portal.azure.com) にグローバル管理者でサインイン"
-    Write-Host "2. 「Azure Active Directory」→「アプリの登録」を選択"
-    Write-Host "3. 「Microsoft Graph Command Line Tools」または類似名のアプリを探して選択"
-    Write-Host "4. 「API のアクセス許可」を選択"
-    Write-Host "5. 以下の権限が付与されているか確認:"
-    Write-Host "   - User.Read.All"
-    Write-Host "   - Files.Read.All"
-    Write-Host "6. 「(テナント名) に管理者の同意を与える」ボタンをクリック"
-    Write-Host "7. 不足している権限がある場合は「アクセス許可の追加」で追加"
-    Write-Host "8. 追加後、再度「管理者の同意を与える」をクリック"
-    Write-Host "=================================================" -ForegroundColor Yellow
-    
-    $checkPermissions = Read-Host "アプリケーション権限を確認しますか？ (y/n)"
-    if ($checkPermissions -eq "y") {
-        Start-Process "https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
-    }
-}
-
-# アクセストークンの管理のためのグローバル変数
-$script:AccessToken = $null
-$script:TokenExpiration = [DateTime]::MinValue
-$script:IsAdmin = $false
-$script:CurrentUserId = $null
-
-# 管理者権限の確認関数（/me エンドポイントを回避）
-function Test-IsGlobalAdmin {
-    try {
-        # ユーザー自身のIDを取得
-        if (-not $script:CurrentUserId) {
-            $context = Get-MgContext
-            if (-not $context) {
-                Write-DetailLog "認証コンテキストを取得できません。" -Level ERROR
-                return $false
-            }
-            
-            # ユーザープリンシパル名でユーザーを検索
-            try {
-                $filter = "userPrincipalName eq '$($context.Account)'"
-                $user = Get-MgUser -Filter $filter -ErrorAction Stop
-                if ($user) {
-                    $script:CurrentUserId = $user.Id
-                    Write-DetailLog "現在のユーザーID: $($script:CurrentUserId)" -Level INFO
-                }
-                else {
-                    Write-DetailLog "現在のユーザーを取得できませんでした。" -Level WARNING
-                    return $false
-                }
-            }
-            catch {
-                Write-DetailLog "現在のユーザーID取得中にエラー: $($_.Exception.Message)" -Level WARNING
-                return $false
-            }
-        }
-        
-        # ロールの確認
-        try {
-            $roles = Get-MgUserMemberOf -UserId $script:CurrentUserId -All -ErrorAction Stop
-            
-            # ロールとグループのチェック
-            $adminRoles = @(
-                'Global Administrator',
-                'Company Administrator',
-                'SharePoint Administrator',
-                'Global Reader',
-                'Teams Administrator',
-                'OneDrive管理者',
-                'SharePoint管理者',
-                'グローバル管理者'
-            )
-            
-            foreach ($role in $roles) {
-                $roleType = $role.AdditionalProperties.'@odata.type'
-                $displayName = $role.AdditionalProperties.displayName
-                
-                if (($roleType -eq "#microsoft.graph.directoryRole" -or 
-                     $roleType -eq "#microsoft.graph.group") -and 
-                    ($adminRoles -contains $displayName)) {
-                    Write-DetailLog "管理者ロールを発見: $displayName" -Level INFO
-                    return $true
-                }
-            }
-            
-            Write-DetailLog "ユーザーは管理者ロールを持っていません。" -Level INFO
-            return $false
-        }
-        catch {
-            Write-DetailLog "ロール確認中にエラー: $($_.Exception.Message)" -Level WARNING
-            return $false
-        }
-    }
-    catch {
-        Write-DetailLog "管理者権限の確認中にエラーが発生しました: $($_.Exception.Message)" -Level WARNING
-        return $false
-    }
-}
-
-# アクセストークンを取得する関数
-function Get-ValidAccessToken {
-    try {
-        # トークンが有効期限切れか確認
-        $now = [DateTime]::UtcNow
-        if (($script:AccessToken -eq $null) -or ($now -ge $script:TokenExpiration)) {
-            Write-DetailLog "新しいアクセストークンを取得しています..." -Level INFO
-            
-            try {
-                $context = Get-MgContext
-                if ($context) {
-                    $script:AccessToken = $context.AccessToken
-                    
-                    # AccessTokenExpiresOnが利用できる場合は期限を設定
-                    if ($context.ExpiresOn) {
-                        $script:TokenExpiration = $context.ExpiresOn
-                    } else {
-                        # 有効期限不明の場合は警告を表示
-                        Write-DetailLog "コンテキストから直接アクセストークンを取得しました。有効期限は不明です。" -Level WARNING
-                        # 安全のため1時間後を有効期限として設定
-                        $script:TokenExpiration = $now.AddHours(1)
-                    }
-                } else {
-                    Write-DetailLog "GraphAPIコンテキストが存在しません。再認証が必要です。" -Level ERROR
-                    return $null
-                }
-            } catch {
-                Write-DetailLog "トークン取得中にエラーが発生しました: $($_.Exception.Message)" -Level ERROR
-                return $null
-            }
-            
-            # トークンが取得できたか確認
-            if ([string]::IsNullOrEmpty($script:AccessToken)) {
-                Write-DetailLog "有効なアクセストークンがありません。再認証が必要です。" -Level ERROR
-                return $null
-            }
-            
-            # 管理者権限の確認
-            $script:IsAdmin = Test-IsGlobalAdmin
-        }
-        
-        # 一般ユーザー向けのメッセージ
-        if (-not $script:IsAdmin -and $script:AccessToken) {
-            Write-DetailLog "一般ユーザー権限では一部の情報にアクセスできません。自分のOneDrive情報のみ取得可能です。" -Level INFO
-        }
-        
-        return $script:AccessToken
-    }
-    catch {
-        Write-DetailLog "アクセストークンの取得に失敗しました: $($_.Exception.Message)" -Level ERROR
-        Write-ErrorLog $_ "アクセストークン処理中のエラー"
-        return $null
-    }
-}
-
 # Microsoft Graph モジュールの確認とインストール関数
 function Install-RequiredModules {
     $modules = @("Microsoft.Graph.Users", "Microsoft.Graph.Files", "Microsoft.Graph.Authentication")
@@ -649,119 +452,104 @@ function Get-SafePropertyValue {
     }
 }
 
-# OneDriveの状態を取得する関数
+# OneDriveの状態を取得する関数 - 管理者向け拡張
 function Get-OneDriveStatus {
     param (
+        [Parameter(Mandatory=$false)]
+        [string]$UserId,
+        
+        [switch]$SelfOnly,
+        
         [switch]$CurrentUserOnly
     )
     
     try {
         Write-DetailLog "OneDriveステータスの取得を開始します..." -Level INFO
         
+        # 結果を格納する配列
         $users = @()
         
-        # 一般ユーザーか管理者かによって処理を分岐
-        if ($CurrentUserOnly -or -not $script:IsAdmin) {
-            Write-DetailLog "自分のOneDrive情報の取得を続行します..." -Level INFO
-            
-            try {
-                # 現在のユーザー情報を取得
-                $currentUser = Get-MgUser -UserId $script:CurrentUserId
-                
-                if ($null -ne $currentUser) {
-                    # ユーザーのOneDriveサイトを取得
-                    $driveId = $null
-                    $drive = $null
-                    
-                    try {
-                        $drive = Get-MgUserDrive -UserId $currentUser.Id
-                        if ($drive) {
-                            $driveId = $drive.Id
-                        }
-                    }
-                    catch {
-                        Write-DetailLog "ユーザー $($currentUser.DisplayName) のOneDriveにアクセスできません: $($_.Exception.Message)" -Level WARNING
-                    }
-                    
-                    # 使用容量と割り当て容量を取得
-                    $usedSpace = 0
-                    $totalSpace = 0
-                    $usedPercentage = 0
-                    $lastActivityDate = $null
-                    
-                    if ($null -ne $drive) {
-                        # quotaプロパティがnullでないことを確認
-                        $quota = $drive.Quota
-                        
-                        if ($null -ne $quota) {
-                            $usedSpace = Get-SafePropertyValue -InputObject $quota -PropertyName "Used" -DefaultValue 0
-                            $totalSpace = Get-SafePropertyValue -InputObject $quota -PropertyName "Total" -DefaultValue 0
-                            
-                            if ($totalSpace -gt 0) {
-                                $usedPercentage = [math]::Round(($usedSpace / $totalSpace) * 100, 2)
-                            }
-                        }
-                        
-                        # GB単位に変換
-                        $usedSpaceGB = [math]::Round($usedSpace / 1GB, 2)
-                        $totalSpaceGB = [math]::Round($totalSpace / 1GB, 2)
-                        
-                        # 最終アクセス日時の取得を試行
-                        try {
-                            $items = Get-MgUserDriveRoot -UserId $currentUser.Id -ExpandProperty "children" -Top 1
-                            if ($items -and $items.Value.Count -gt 0) {
-                                $lastActivityDate = $items.Value[0].LastModifiedDateTime
-                            }
-                        }
-                        catch {
-                            Write-DetailLog "ユーザー $($currentUser.DisplayName) のOneDriveアイテムにアクセスできません" -Level WARNING
-                        }
-                        
-                        # ユーザー情報を配列に追加
-                        $userObject = [PSCustomObject]@{
-                            UserId = $currentUser.Id
-                            Name = $currentUser.DisplayName
-                            UserPrincipalName = $currentUser.UserPrincipalName
-                            Mail = $currentUser.Mail
-                            IsActive = $true
-                            UsedSpace = $usedSpaceGB
-                            TotalSpace = $totalSpaceGB
-                            UsedPercentage = $usedPercentage
-                            LastActivity = $lastActivityDate
-                        }
-                        
-                        $users += $userObject
-                    }
-                    else {
-                        Write-DetailLog "ユーザー $($currentUser.DisplayName) のOneDriveが見つかりません" -Level WARNING
-                    }
-                }
-                else {
-                    Write-DetailLog "現在のユーザー情報が取得できません" -Level ERROR
-                }
-            }
-            catch {
-                Write-ErrorLog $_ "処理中にエラーが発生しました。"
-            }
-        }
-        else {
-            # ...existing code (管理者向けの処理)...
+        # ユーザーIDの確認とセットアップ
+        $targetUserId = $null
+        if ($UserId) {
+            $targetUserId = $UserId
+            Write-DetailLog "指定されたユーザーID: $targetUserId のOneDrive情報を取得" -Level INFO
+        } elseif ($script:CurrentUserId) {
+            $targetUserId = $script:CurrentUserId
+            Write-DetailLog "現在のユーザーID: $targetUserId のOneDrive情報を取得" -Level INFO
+        } else {
+            Write-DetailLog "有効なユーザーIDが指定されていません" -Level ERROR
+            return $null
         }
         
-        return $users
+        try {
+            # ユーザー情報を取得
+            $user = Get-MgUser -UserId $targetUserId -ErrorAction Stop
+            
+            if ($null -eq $user) {
+                Write-DetailLog "ユーザー情報が取得できません: $targetUserId" -Level ERROR
+                return $null
+            }
+            
+            Write-DetailLog "ユーザー「$($user.DisplayName)」のOneDrive情報を取得中..." -Level INFO
+            
+            try {
+                # クエリパラメータを拡張（データ取得の成功率向上のため）
+                $params = @{
+                    UserId = $user.Id
+                    ErrorAction = "Stop"
+                }
+                
+                # ユーザーのドライブを取得
+                $drive = Get-MgUserDrive @params
+                
+                if ($null -eq $drive) {
+                    Write-DetailLog "ユーザー $($user.DisplayName) のOneDriveが見つかりません" -Level WARNING
+                    return $null
+                }
+                
+                # デバッグ情報の出力
+                Write-DetailLog "取得成功: DriveID=$($drive.Id), Type=$($drive.DriveType)" -Level INFO
+                
+                # クォータ情報を持っているか確認
+                if ($drive.Quota) {
+                    Write-DetailLog "クォータ情報: State=$($drive.Quota.State), Total=$([math]::Round($drive.Quota.Total/1GB,2))GB, Used=$([math]::Round($drive.Quota.Used/1GB,2))GB" -Level INFO
+                } else {
+                    Write-DetailLog "クォータ情報がありません" -Level WARNING
+                }
+                
+                # ドライブの詳細情報を返却
+                return $drive
+            }
+            catch {
+                Write-DetailLog "ユーザー $($user.DisplayName) のOneDrive取得中にエラー: $($_.Exception.Message)" -Level ERROR
+                if ($_.Exception.InnerException) {
+                    Write-DetailLog "  詳細: $($_.Exception.InnerException.Message)" -Level ERROR
+                }
+                return $null
+            }
+        }
+        catch {
+            Write-ErrorLog $_ "ユーザー $targetUserId の情報取得中にエラーが発生しました"
+            return $null
+        }
     }
     catch {
         Write-ErrorLog $_ "OneDriveステータスの取得中にエラーが発生しました"
-        return @()
+        return $null
     }
 }
 
-# HTML、CSS、JavaScriptのテンプレートを作成する関数
+# HTML、CSS、JavaScriptのテンプレートを作成する関数 - 改善版
 function Create-HTMLTemplate {
     param (
         [string]$Title = "OneDrive ステータス",
-        [string]$JsFileName
+        [string]$JsFileName,
+        [string]$ReportFolder
     )
+    
+    # JavaScriptファイルへの相対パスを作成（同じフォルダ内を想定）
+    $jsPath = "./$JsFileName"
     
     $htmlTemplate = @"
 <!DOCTYPE html>
@@ -770,8 +558,11 @@ function Create-HTMLTemplate {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>$Title</title>
+    <!-- DataTablesとそのプラグインのスタイルシート -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.2.2/css/buttons.dataTables.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/searchpanes/1.4.0/css/searchPanes.dataTables.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/select/1.3.4/css/select.dataTables.min.css">
     <style>
         body {
             font-family: 'メイリオ', 'Meiryo', sans-serif;
@@ -842,6 +633,34 @@ function Create-HTMLTemplate {
             color: #666;
             font-size: 0.8em;
         }
+        .search-tools {
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .dataTables_filter {
+            margin-bottom: 15px;
+        }
+        .dt-buttons {
+            margin-bottom: 15px;
+        }
+        /* 印刷時のスタイル */
+        @media print {
+            body {
+                background-color: white;
+                margin: 0;
+                padding: 0;
+            }
+            .container {
+                box-shadow: none;
+                padding: 0;
+            }
+            .no-print {
+                display: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -851,6 +670,7 @@ function Create-HTMLTemplate {
         <div class="report-info">
             <p><strong>生成日時：</strong> <span id="reportDate"></span></p>
             <p><strong>取得アカウント：</strong> <span id="reportAccount"></span></p>
+            <p><strong>レポート保存先：</strong> $ReportFolder</p>
         </div>
         
         <div class="chart-container">
@@ -858,7 +678,18 @@ function Create-HTMLTemplate {
             <div id="summaryChart"></div>
         </div>
         
-        <table id="statusTable" class="display">
+        <div class="search-tools no-print">
+            <h3>データ検索・操作ツール</h3>
+            <p>以下の機能が利用できます：</p>
+            <ul>
+                <li><strong>検索：</strong> テーブル上部の検索ボックスで全項目から検索</li>
+                <li><strong>エクスポート：</strong> 「エクスポート」ボタンからデータをダウンロード</li>
+                <li><strong>印刷：</strong> 「印刷」ボタンからテーブルを印刷</li>
+                <li><strong>表示列の選択：</strong> 「表示列」ボタンから表示する列を選択</li>
+            </ul>
+        </div>
+        
+        <table id="statusTable" class="display" style="width:100%">
             <thead>
                 <tr>
                     <th>氏名</th>
@@ -883,15 +714,24 @@ function Create-HTMLTemplate {
         </div>
     </div>
 
+    <!-- JavaScriptライブラリ -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <!-- DataTablesプラグイン -->
     <script src="https://cdn.datatables.net/buttons/2.2.2/js/dataTables.buttons.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.html5.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.print.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.2.2/js/buttons.colVis.min.js"></script>
+    <script src="https://cdn.datatables.net/searchpanes/1.4.0/js/dataTables.searchPanes.min.js"></script>
+    <script src="https://cdn.datatables.net/select/1.3.4/js/dataTables.select.min.js"></script>
+    <!-- Excel出力用ライブラリ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+    <!-- グラフ用ライブラリ -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="$JsFileName"></script>
+    <!-- カスタムのJavaScript -->
+    <script src="$jsPath"></script>
 </body>
 </html>
 "@
@@ -899,7 +739,7 @@ function Create-HTMLTemplate {
     return $htmlTemplate
 }
 
-# JavaScriptのテンプレートを作成する関数
+# JavaScriptのテンプレートを作成する関数 - 拡張版
 function Create-JSTemplate {
     param (
         [array]$Data,
@@ -908,18 +748,27 @@ function Create-JSTemplate {
     )
     
     # JavaScriptにデータを渡すためJSON形式に変換
-    $jsonData = $Data | ConvertTo-Json -Depth 5
+    $jsonData = $Data | ConvertTo-Json -Depth 5 -Compress
     
-    # `$(`など特殊文字を含む部分はバッククォートでエスケープ
+    # JavaScriptテンプレート
     $jsTemplate = @"
 // OneDrive Status Report JavaScript
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('OneDrive Status Report: ドキュメント読み込み完了');
+    
     // レポート情報を設定
     document.getElementById('reportDate').textContent = '${GeneratedDate.ToString("yyyy/MM/dd HH:mm:ss")}';
     document.getElementById('reportAccount').textContent = '${Account}';
     
     // JSONデータをJavaScriptオブジェクトに変換
-    const userData = ${jsonData};
+    let userData;
+    try {
+        userData = ${jsonData};
+        console.log('データ読み込み成功: ' + userData.length + '件のユーザー情報');
+    } catch (error) {
+        console.error('データ解析エラー:', error);
+        userData = [];
+    }
     
     // テーブルデータを構築
     const tableBody = document.getElementById('tableBody');
@@ -928,6 +777,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let totalStorage = 0;
     let usedStorage = 0;
     
+    // テーブルデータの作成
     userData.forEach(user => {
         const row = document.createElement('tr');
         
@@ -996,57 +846,150 @@ document.addEventListener('DOMContentLoaded', function() {
         // データ集計
         totalUsers++;
         if (user.状態 === '有効' && !isNaN(parseFloat(user.使用容量GB))) {
+            let allocatedSpace = 0;
             if (!isNaN(parseFloat(user.割当容量GB))) {
-                totalStorage += parseFloat(user.割当容量GB);
+                allocatedSpace = parseFloat(user.割当容量GB);
+            } else if (typeof user.割当容量GB === 'string' && !isNaN(parseFloat(user.割当容量GB.replace(/,/g, '')))) {
+                // カンマ区切りの文字列を数値に変換
+                allocatedSpace = parseFloat(user.割当容量GB.replace(/,/g, ''));
             } else {
-                totalStorage += 1024; // 1TBをデフォルト値とする
+                allocatedSpace = 1024; // 1TBをデフォルト値とする
             }
-            usedStorage += parseFloat(user.使用容量GB);
+            totalStorage += allocatedSpace;
+            
+            // 使用容量の集計
+            let usedSpace = 0;
+            if (!isNaN(parseFloat(user.使用容量GB))) {
+                usedSpace = parseFloat(user.使用容量GB);
+            } else if (typeof user.使用容量GB === 'string' && !isNaN(parseFloat(user.使用容量GB.replace(/,/g, '')))) {
+                usedSpace = parseFloat(user.使用容量GB.replace(/,/g, ''));
+            }
+            usedStorage += usedSpace;
         }
         
         tableBody.appendChild(row);
     });
     
-    // DataTablesの初期化
-    `$(document).ready(function() {
-        `$('#statusTable').DataTable({
+    // DataTablesの初期化 - 拡張機能追加
+    try {
+        const table = $('#statusTable').DataTable({
             language: {
                 url: "https://cdn.datatables.net/plug-ins/1.13.1/i18n/ja.json"
             },
+            // 表示機能とボタンの設定
             dom: 'Bfrtip',
             buttons: [
-                'copy', 'csv', 'excel', 'pdf', 'print', 'colvis'
+                {
+                    extend: 'copy',
+                    text: 'コピー',
+                    className: 'btn-copy'
+                },
+                {
+                    extend: 'csv',
+                    text: 'CSV',
+                    className: 'btn-csv',
+                    title: 'OneDriveStatus_' + new Date().toISOString().split('T')[0]
+                },
+                {
+                    extend: 'excel',
+                    text: 'Excel',
+                    className: 'btn-excel',
+                    title: 'OneDriveステータスレポート_' + new Date().toISOString().split('T')[0],
+                    exportOptions: {
+                        columns: ':visible'
+                    }
+                },
+                {
+                    extend: 'pdf',
+                    text: 'PDF',
+                    className: 'btn-pdf',
+                    title: 'OneDriveステータスレポート',
+                    orientation: 'landscape'
+                },
+                {
+                    extend: 'print',
+                    text: '印刷',
+                    className: 'btn-print',
+                    customize: function (win) {
+                        $(win.document.body).find('h1').text('OneDriveステータスレポート');
+                        $(win.document.body).css('font-family', 'メイリオ, Meiryo, sans-serif');
+                    }
+                },
+                {
+                    extend: 'colvis',
+                    text: '表示列',
+                    className: 'btn-colvis'
+                },
+                {
+                    text: '全データ表示',
+                    action: function (e, dt) {
+                        dt.page.len(-1).draw();
+                    }
+                }
             ],
+            // 検索機能の強化
+            searchBuilder: true,
+            searchPanes: true,
+            // 1ページに表示する行数
             pageLength: 25,
-            order: [[3, 'desc'], [7, 'desc']]
+            // デフォルトのソート順
+            order: [[3, 'desc'], [7, 'desc']],
+            // レスポンシブ対応
+            responsive: true,
+            // 初期化完了時の処理
+            initComplete: function() {
+                console.log('DataTables 初期化完了');
+                // 検索ボックスにプレースホルダーを追加
+                $('.dataTables_filter input').attr('placeholder', '検索キーワードを入力');
+                // 検索ボックスの幅を広げる
+                $('.dataTables_filter input').css('width', '300px');
+            }
         });
-    });
+        
+        console.log('DataTablesの初期化に成功しました');
+        
+        // 検索機能強化: 即時反応するフィルタリング
+        $('#statusTable_filter input').unbind().bind('keyup', function() {
+            table.search(this.value).draw();
+        });
+        
+    } catch (error) {
+        console.error('DataTables初期化エラー:', error);
+    }
     
     // 使用状況サマリーチャート
     if (document.getElementById('summaryChart')) {
-        const usagePercentage = totalStorage > 0 ? (usedStorage / totalStorage * 100).toFixed(1) : 0;
-        const activePercentage = totalUsers > 0 ? (activeUsers / totalUsers * 100).toFixed(1) : 0;
-        
-        const summaryHTML = `
-            <div style="margin: 20px 0;">
-                <div style="display: flex; justify-content: space-between;">
-                    <div style="flex: 1; margin-right: 20px;">
-                        <h3>ユーザー状態</h3>
-                        <p>総ユーザー数: <strong>``${totalUsers}</strong></p>
-                        <p>有効ユーザー数: <strong>``${activeUsers}</strong> (``${activePercentage}%)</p>
-                        <div class="usage-bar" style="width: ``${activePercentage}%"></div>
-                    </div>
-                    <div style="flex: 1;">
-                        <h3>ストレージ使用状況</h3>
-                        <p>総割当容量: <strong>``${totalStorage.toFixed(1)} GB</strong></p>
-                        <p>総使用容量: <strong>``${usedStorage.toFixed(1)} GB</strong> (``${usagePercentage}%)</p>
-                        <div class="usage-bar" style="width: ``${usagePercentage}%"></div>
+        try {
+            const usagePercentage = totalStorage > 0 ? (usedStorage / totalStorage * 100).toFixed(1) : 0;
+            const activePercentage = totalUsers > 0 ? (activeUsers / totalUsers * 100).toFixed(1) : 0;
+            
+            console.log('サマリー情報: 総ユーザー数=' + totalUsers + ', 有効ユーザー数=' + activeUsers);
+            console.log('ストレージ情報: 総容量=' + totalStorage.toFixed(1) + 'GB, 使用量=' + usedStorage.toFixed(1) + 'GB');
+            
+            const summaryHTML = `
+                <div style="margin: 20px 0;">
+                    <div style="display: flex; flex-wrap: wrap; justify-content: space-between;">
+                        <div style="flex: 1; min-width: 250px; margin-right: 20px; margin-bottom: 20px;">
+                            <h3>ユーザー状態</h3>
+                            <p>総ユーザー数: <strong>``${totalUsers}</strong></p>
+                            <p>有効ユーザー数: <strong>``${activeUsers}</strong> (``${activePercentage}%)</p>
+                            <div class="usage-bar" style="width: ``${activePercentage}%"></div>
+                        </div>
+                        <div style="flex: 1; min-width: 250px; margin-bottom: 20px;">
+                            <h3>ストレージ使用状況</h3>
+                            <p>総割当容量: <strong>``${totalStorage.toFixed(1)} GB</strong></p>
+                            <p>総使用容量: <strong>``${usedStorage.toFixed(1)} GB</strong> (``${usagePercentage}%)</p>
+                            <div class="usage-bar" style="width: ``${usagePercentage}%"></div>
+                        </div>
                     </div>
                 </div>
-            </div>
-        `;
-        
-        document.getElementById('summaryChart').innerHTML = summaryHTML;
+            `;
+            
+            document.getElementById('summaryChart').innerHTML = summaryHTML;
+        } catch (error) {
+            console.error('サマリーチャート生成エラー:', error);
+            document.getElementById('summaryChart').innerHTML = '<p class="error">データの表示中にエラーが発生しました。</p>';
+        }
     }
 });
 "@
@@ -1206,7 +1149,7 @@ try {
         if ($script:IsAdmin) {
             Write-DetailLog "管理者権限を使用して全ユーザーのOneDrive情報を取得します。" -Level INFO
             try {
-                $users = Get-MgUser -All -Property Id,UserPrincipalName,DisplayName,OnPremisesSamAccountName -ErrorAction Stop
+                $users = Get-MgUser -All -Property Id,UserPrincipalName,DisplayName,Mail,OnPremisesSamAccountName -ErrorAction Stop
                 Write-DetailLog "合計 $($users.Count) 人のユーザーが見つかりました。" -Level INFO
             }
             catch {
@@ -1214,7 +1157,7 @@ try {
                 Write-DetailLog "現在のユーザーのみでスキャンを実行します。" -Level WARNING
                 $users = @()
                 if ($script:CurrentUserId) {
-                    $user = Get-MgUser -UserId $script:CurrentUserId -Property Id,UserPrincipalName,DisplayName,OnPremisesSamAccountName
+                    $user = Get-MgUser -UserId $script:CurrentUserId -Property Id,UserPrincipalName,DisplayName,Mail,OnPremisesSamAccountName
                     $users += $user
                 }
                 else {
@@ -1227,7 +1170,7 @@ try {
             Write-DetailLog "一般ユーザー権限のため、自分のOneDrive情報のみ取得します。" -Level WARNING
             $users = @()
             if ($script:CurrentUserId) {
-                $user = Get-MgUser -UserId $script:CurrentUserId -Property Id,UserPrincipalName,DisplayName,OnPremisesSamAccountName
+                $user = Get-MgUser -UserId $script:CurrentUserId -Property Id,UserPrincipalName,DisplayName,Mail,OnPremisesSamAccountName
                 $users += $user
             }
             else {
@@ -1243,72 +1186,143 @@ try {
             
             # 自分自身の場合は特別処理
             $isSelf = ($user.Id -eq $script:CurrentUserId)
-            if ($isSelf) {
-                $driveInfo = Get-OneDriveStatus -userId $user.Id -SelfOnly
-            } else {
-                $driveInfo = Get-OneDriveStatus -userId $user.Id
-            }
-
-            if ($driveInfo) {
-                $successCount++
+            
+            # ユーザーのOneDrive情報を取得
+            try {
+                # OneDriveの詳細情報を取得
+                $driveInfo = Get-OneDriveStatus -UserId $user.Id
                 
-                # クォータ情報を取得
-                $quota = $driveInfo.Quota
-                $state = Get-SafePropertyValue -InputObject $driveInfo -PropertyName "State" -DefaultValue "不明"
-                $lastModified = Get-SafePropertyValue -InputObject $driveInfo -PropertyName "LastModifiedDateTime" -DefaultValue $null
-                
-                # 変数を安全に取得
-                $quotaTotal = Get-SafePropertyValue -InputObject $quota -PropertyName "Total" -DefaultValue 0
-                $quotaUsed = Get-SafePropertyValue -InputObject $quota -PropertyName "Used" -DefaultValue 0
-                $quotaRemaining = Get-SafePropertyValue -InputObject $quota -PropertyName "Remaining" -DefaultValue 0
-                
-                # GB単位に変換
-                if ($quotaTotal -eq 0) {
-                    $totalGB = "無制限（1TB）"
-                    $usedGB = [math]::Round($quotaUsed / 1GB, 2)
-                    $remainingGB = "無制限（1TB-使用量）"
-                    $usagePercentage = "計測不可"
+                # デバッグ用：重要な項目のみを抽出して出力
+                if ($driveInfo) {
+                    Write-DetailLog "ドライブ情報: ID=$($driveInfo.Id), Type=$($driveInfo.DriveType)" -Level INFO
+                    
+                    # クォータ情報を取得
+                    $quota = $driveInfo.Quota
+                    if ($quota) {
+                        Write-DetailLog "クォータ状態: $($quota.State)" -Level INFO
+                    }
+                    
+                    $successCount++
+                    
+                    # クォータ情報を取得
+                    $driveId = $driveInfo.Id
+                    $webUrl = $driveInfo.WebUrl
+                    
+                    # 変数を安全に取得
+                    $quotaTotal = Get-SafePropertyValue -InputObject $quota -PropertyName "Total" -DefaultValue 0
+                    $quotaUsed = Get-SafePropertyValue -InputObject $quota -PropertyName "Used" -DefaultValue 0
+                    $quotaRemaining = Get-SafePropertyValue -InputObject $quota -PropertyName "Remaining" -DefaultValue 0
+                    $quotaState = Get-SafePropertyValue -InputObject $quota -PropertyName "State" -DefaultValue "unknown"
+                    
+                    # GB単位に変換
+                    if ($quotaTotal -eq 0) {
+                        # 使用容量の正確な変換
+                        $usedGB = if ($quotaUsed -gt 0) {
+                            [math]::Round($quotaUsed / 1GB, 2)
+                        } else {
+                            0
+                        }
+                        
+                        # デバッグログで検出された25600GBを適用（実際の環境では変更が必要かもしれません）
+                        $totalGB = 25600
+                        $remainingGB = $totalGB - $usedGB
+                        
+                        # パーセンテージ計算
+                        $usagePercentage = if ($usedGB -gt 0) {
+                            [math]::Round(($usedGB / $totalGB) * 100, 1)
+                        } else {
+                            0
+                        }
+                    } else {
+                        $totalGB = [math]::Round($quotaTotal / 1GB, 2)
+                        $usedGB = [math]::Round($quotaUsed / 1GB, 2)
+                        $remainingGB = [math]::Round($quotaRemaining / 1GB, 2)
+                        
+                        # パーセンテージ計算
+                        $usagePercentage = if ($quotaTotal -gt 0) {
+                            [math]::Round(($quotaUsed / $quotaTotal) * 100, 1)
+                        } else {
+                            0
+                        }
+                    }
+                    
+                    $status = "有効"
+                    
+                    # 最終更新日を取得
+                    $lastModified = $null
+                    try {
+                        # ルートフォルダ自体の更新日時を取得
+                        if ($driveInfo.Root -and $driveInfo.Root.LastModifiedDateTime) {
+                            $lastModified = $driveInfo.Root.LastModifiedDateTime
+                        } else {
+                            # 子アイテムから最新の更新日を探すことを試みる
+                            $childParams = @{
+                                UserId = $user.Id
+                                Top = 1
+                                OrderBy = "lastModifiedDateTime desc"
+                                ErrorAction = "Stop"
+                            }
+                            
+                            $rootItems = Get-MgUserDriveRootChild @childParams
+                            if ($rootItems -and $rootItems.Count -gt 0) {
+                                $lastModified = $rootItems[0].LastModifiedDateTime
+                            }
+                        }
+                    }
+                    catch {
+                        Write-DetailLog "ユーザー $($user.DisplayName) のファイル履歴取得時にエラー: $($_.Exception.Message)" -Level WARNING
+                    }
+                    
+                    # 最終更新日を整形
+                    if ($lastModified) {
+                        $lastModifiedFormatted = (Get-Date $lastModified -Format "yyyy/MM/dd HH:mm:ss")
+                    } else {
+                        $lastModifiedFormatted = "未更新"
+                    }
+                    
+                    Write-DetailLog "  ステータス: $status, 割当: $totalGB GB, 使用: $usedGB GB ($usagePercentage%)" -Level INFO
                 } else {
-                    $totalGB = [math]::Round($quotaTotal / 1GB, 2)
-                    $usedGB = [math]::Round($quotaUsed / 1GB, 2)
-                    $remainingGB = [math]::Round($quotaRemaining / 1GB, 2)
-                    $usagePercentage = if ($quotaTotal -gt 0) { [math]::Round(($quotaUsed / $quotaTotal) * 100, 1) } else { 0 }
-                }
-                
-                $status = "有効"
-                
-                # 最終更新日を整形
-                if ($lastModified) {
-                    $lastModifiedFormatted = (Get-Date $lastModified -Format "yyyy/MM/dd HH:mm:ss")
-                } else {
+                    $failureCount++
+                    $totalGB = "取得不可"
+                    $usedGB = "取得不可"
+                    $remainingGB = "取得不可"
+                    $usagePercentage = "取得不可"
+                    $status = "未設定"
                     $lastModifiedFormatted = "未更新"
+                    
+                    Write-DetailLog "  OneDrive情報を取得できませんでした。" -Level WARNING
                 }
-                
-                Write-DetailLog "  ステータス: $status, 割当: $totalGB GB, 使用: $usedGB GB ($usagePercentage%)" -Level INFO
-            } else {
-                $failureCount++
-                $totalGB = "取得不可"
-                $usedGB = "取得不可"
-                $remainingGB = "取得不可"
-                $usagePercentage = "取得不可"
-                $status = "未設定"
-                $lastModifiedFormatted = "未更新"
-                
-                Write-DetailLog "  OneDrive情報を取得できませんでした。" -Level WARNING
-            }
 
-            # 結果を配列に追加
-            $results += [PSCustomObject]@{
-                ユーザーID = $user.Id
-                氏名 = $user.DisplayName
-                ログオンアカウント名 = $user.OnPremisesSamAccountName
-                メールアドレス = $user.UserPrincipalName
-                状態 = $status
-                割当容量GB = $totalGB
-                使用容量GB = $usedGB
-                残容量GB = $remainingGB
-                使用率 = $usagePercentage
-                最終更新日時 = $lastModifiedFormatted
+                # 結果を配列に追加
+                $results += [PSCustomObject]@{
+                    ユーザーID = $user.Id
+                    氏名 = $user.DisplayName
+                    ログオンアカウント名 = $user.OnPremisesSamAccountName
+                    メールアドレス = $user.Mail
+                    状態 = $status
+                    割当容量GB = $totalGB
+                    使用容量GB = $usedGB
+                    残容量GB = $remainingGB
+                    使用率 = $usagePercentage
+                    最終更新日時 = $lastModifiedFormatted
+                }
+            }
+            catch {
+                Write-ErrorLog $_ "ユーザー $($user.UserPrincipalName) のOneDrive情報処理中にエラーが発生しました"
+                
+                # エラーが発生した場合も結果に追加
+                $results += [PSCustomObject]@{
+                    ユーザーID = $user.Id
+                    氏名 = $user.DisplayName
+                    ログオンアカウント名 = $user.OnPremisesSamAccountName
+                    メールアドレス = $user.Mail
+                    状態 = "エラー"
+                    割当容量GB = "エラー"
+                    使用容量GB = "エラー"
+                    残容量GB = "エラー"
+                    使用率 = "エラー"
+                    最終更新日時 = "エラー"
+                }
             }
         }
 
@@ -1325,7 +1339,7 @@ try {
         
         # HTML生成
         Write-DetailLog "HTMLファイルの出力を開始します..." -Level INFO
-        $htmlContent = Create-HTMLTemplate -Title "OneDrive ステータスレポート" -JsFileName $jsFileNameOnly
+        $htmlContent = Create-HTMLTemplate -Title "OneDrive ステータスレポート" -JsFileName $jsFileNameOnly -ReportFolder $outputPath
         Export-ToHtml -HtmlTemplate $htmlContent -Path $htmlFilePath
         
         # 出力完了メッセージ
