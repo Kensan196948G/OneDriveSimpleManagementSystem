@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure AD ポータル API パーミッション確認追加手順</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; background-color: #f9f9f9; }
+    h1, h2, h3 { color: #333; }
+    ul, ol { margin-left: 20px; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #f4f4f4; }
+    code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 4px; }
+    pre { background-color: #f4f4f4; padding: 10px; border-radius: 4px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>🛡️ Azure AD ポータル（Microsoft Entra IDポータル）での API パーミッションの確認追加手順</h1>
+  <p>以下の手順に従って、Microsoft Graph API の必要なパーミッションを確認し、追加してください。</p>
+  <hr>
+
+  <h2>✅ 1. Azure ポータル（Microsoft Entra IDポータル）へサインイン</h2>
+  <ol>
+    <li>🌐 ブラウザを開き、<a href="https://portal.azure.com" target="_blank">Azure ポータル</a> にアクセスします。</li>
+    <li>🔑 <strong>グローバル管理者</strong> アカウントでサインインします。</li>
+  </ol>
+
+  <h2>✅ 2. Azure Active Directory へ移動</h2>
+  <ol>
+    <li>📁 左側のメニューから <strong>「Azure Active Directory」</strong> をクリックします。</li>
+    <li>📋 <strong>「アプリの登録」</strong> をクリックします。</li>
+  </ol>
+
+  <h2>✅ 3. 該当アプリケーションを選択</h2>
+  <ol>
+    <li>🔍 一覧から目的のアプリケーション（例: OneDrive 管理ツールなど）を探し、クリックします。</li>
+    <li>🔗 <strong>「API パーミッション」</strong> をクリックします。</li>
+  </ol>
+
+  <h2>✅ 4. 既存のパーミッションを確認</h2>
+  <ol>
+    <li>👁️‍🗨️ 既に追加されているパーミッションを確認します。</li>
+    <li>✅ 以下のパーミッションが <strong>「Microsoft Graph」</strong> に対して追加されているか確認してください：</li>
+  </ol>
+
+  <table>
+    <tr>
+      <th>📂 パーミッション名</th>
+      <th>🔑 タイプ</th>
+      <th>📝 説明</th>
+    </tr>
+    <tr>
+      <td><strong>Sites.FullControl.All</strong></td>
+      <td>アプリケーション権限</td>
+      <td>全てのサイト コレクションへの完全アクセス</td>
+    </tr>
+    <tr>
+      <td><strong>Files.ReadWrite.All</strong></td>
+      <td>アプリケーション権限</td>
+      <td>全てのユーザーのファイルへの読み書きアクセス</td>
+    </tr>
+    <tr>
+      <td><strong>User.Read.All</strong></td>
+      <td>アプリケーション権限</td>
+      <td>組織内の全てのユーザーのプロファイルを読む権限</td>
+    </tr>
+    <tr>
+      <td><strong>Directory.Read.All</strong></td>
+      <td>アプリケーション権限</td>
+      <td>ディレクトリ データの読み取り</td>
+    </tr>
+  </table>
+
+  <h2>✅ 5. パーミッションを追加</h2>
+  <ol>
+    <li>➕ <strong>「パーミッションの追加」</strong> ボタンをクリックします。</li>
+    <li>🔗 <strong>「Microsoft Graph」</strong> を選択します。</li>
+    <li>📋 <strong>「アプリケーションの許可」</strong> を選択します。</li>
+    <li>🔍 以下のパーミッションを順番に検索して追加します：
+      <ul>
+        <li><strong>Sites.FullControl.All</strong></li>
+        <li><strong>Files.ReadWrite.All</strong></li>
+        <li><strong>User.Read.All</strong></li>
+        <li><strong>Directory.Read.All</strong></li>
+      </ul>
+    </li>
+    <li>💾 追加後、<strong>「パーミッションを追加」</strong> をクリックして確定します。</li>
+  </ol>
+
+  <h2>✅ 6. 管理者による同意を付与</h2>
+  <ol>
+    <li>🛡️ <strong>API パーミッション</strong> ページに戻ります。</li>
+    <li>✅ <strong>「管理者による同意を付与」</strong> ボタンをクリックします。</li>
+    <li>⚠️ 確認ダイアログが表示されたら、<strong>「はい」</strong> を選択して同意を適用します。</li>
+  </ol>
+
+  <p><strong>⚠️ 注意:</strong><br>
+  ✅ <strong>「状態」</strong> 列で、各パーミッションが <strong>「承認済み」</strong> になっていることを確認してください。</p>
+
+  <h2>✅ 7. 変更を保存し、反映を確認</h2>
+  <ol>
+    <li>💾 パーミッションの追加と管理者同意が完了したら、変更を保存します。</li>
+    <li>⏳ 10〜15分程度待ち、パーミッションの反映を確認します。</li>
+  </ol>
+
+  <h2>✅ 8. 確認作業</h2>
+  <ol>
+    <li>💻 <strong>PowerShell</strong> から再度 Graph API へ接続し、目的の操作（例: OneDrive 情報の取得）を実行します。</li>
+  </ol>
+
+  <pre><code># OneDrive 情報を取得
+$userId = "r-niikura@mirai-const.co.jp"
+$drive = Get-MgUserDrive -UserId $userId
+
+# 結果を表示
+$drive | Format-List
+  </code></pre>
+
+  <p>この簡単なコマンドで、指定したユーザーの OneDrive 情報を取得できます。</p>
+  <p>🔄 エラーが解消しているか確認してください。</p>
+
+  <p>これで、Azure AD における API パーミッションの設定と管理者同意が完了しました。✅</p>
+</body>
+</html>
