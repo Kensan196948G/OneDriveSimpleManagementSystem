@@ -1,32 +1,32 @@
-@echo off
+ï»¿@echo off
 cls
 echo ===================================================
-echo  OneDrive ƒXƒe[ƒ^ƒXƒ`ƒFƒbƒNƒc[ƒ‹
+echo  OneDrive ã‚¹ãƒ†ãƒ¼ã‚¿ã‚¹ãƒã‚§ãƒƒã‚¯ãƒ„ãƒ¼ãƒ«
 echo ===================================================
 echo.
-echo ‚±‚Ìƒc[ƒ‹‚ÍAOneDrive‚ÌŽg—pó‹µ‚ðŽæ“¾‚µA
-echo ƒŒƒ|[ƒg‚ð¶¬‚µ‚Ü‚·B
+echo ã“ã®ãƒ„ãƒ¼ãƒ«ã¯ã€OneDriveã®ä½¿ç”¨çŠ¶æ³ã‚’å–å¾—ã—ã€
+echo ãƒ¬ãƒãƒ¼ãƒˆã‚’ç”Ÿæˆã—ã¾ã™ã€‚
 echo.
-echo ŽÀs’†‚ÍƒEƒBƒ“ƒhƒE‚ð•Â‚¶‚È‚¢‚Å‚­‚¾‚³‚¢...
+echo å®Ÿè¡Œä¸­ã¯ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’é–‰ã˜ãªã„ã§ãã ã•ã„...
 echo.
-echo ¦Microsoft”FØ‰æ–Ê‚ª•\Ž¦‚³‚ê‚½‚çA
-echo  Ž©•ª‚ÌƒAƒJƒEƒ“ƒg‚ÅƒƒOƒCƒ“‚µ‚Ä‚­‚¾‚³‚¢B
+echo â€»Microsoftèªè¨¼ç”»é¢ãŒè¡¨ç¤ºã•ã‚ŒãŸã‚‰ã€
+echo  è‡ªåˆ†ã®ã‚¢ã‚«ã‚¦ãƒ³ãƒˆã§ãƒ­ã‚°ã‚¤ãƒ³ã—ã¦ãã ã•ã„ã€‚
 echo ===================================================
 echo.
 
 cd /d "%~dp0"
 
-echo PowerShellƒXƒNƒŠƒvƒg‚ðŽÀs‚µ‚Ä‚¢‚Ü‚·...
+echo PowerShellã‚¹ã‚¯ãƒªãƒ—ãƒˆã‚’å®Ÿè¡Œã—ã¦ã„ã¾ã™...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0OneDriveStatusCheck.ps1"
 
 echo.
 if %errorlevel% neq 0 (
-    echo ƒGƒ‰[‚ª”­¶‚µ‚Ü‚µ‚½BƒGƒ‰[ƒƒO‚ðŠm”F‚µ‚Ä‚­‚¾‚³‚¢B
+    echo ã‚¨ãƒ©ãƒ¼ãŒç™ºç”Ÿã—ã¾ã—ãŸã€‚ã‚¨ãƒ©ãƒ¼ãƒ­ã‚°ã‚’ç¢ºèªã—ã¦ãã ã•ã„ã€‚
     pause
     exit /b %errorlevel%
 )
 
-echo Š®—¹‚µ‚Ü‚µ‚½I
+echo å®Œäº†ã—ã¾ã—ãŸï¼
 echo.
-echo ƒEƒBƒ“ƒhƒE‚ð•Â‚¶‚Ä‚­‚¾‚³‚¢B
+echo ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’é–‰ã˜ã¦ãã ã•ã„ã€‚
 pause

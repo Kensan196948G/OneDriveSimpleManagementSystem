@@ -1,6 +1,6 @@
-@echo off
+﻿@echo off
 setlocal enabledelayedexpansion
-chcp 65001 > nul
+chcp 932 > nul
 
 REM PowerShellスクリプトを管理者権限で実行するためのランチャー
 title OneDrive運用ツール 管理者実行ランチャー

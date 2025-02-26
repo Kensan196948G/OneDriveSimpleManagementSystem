@@ -1,108 +1,90 @@
-@echo off
-setlocal enabledelayedexpansion
-
-REM OneDriveレポート作成ショートカット
-REM このバッチファイルはPowerShellスクリプトを起動するためのものです
-
-REM コンソールをUTF-8に設定
+﻿@echo off
 chcp 65001 > nul
+setlocal EnableDelayedExpansion
 
-REM タイトルとコンソール設定
-title OneDriveステータスレポート作成ツール
-color 1F
+:: OneDrive運用ツールのメインバッチファイル
+:: このファイルは各種機能へのショートカットを提供します
 
-REM バナー表示
-echo ================================================
-echo       OneDrive ステータスレポート作成ツール
-echo ================================================
-echo.
-echo このツールはOneDriveの使用状況レポートを生成します
-echo.
+title OneDrive運用ツール メニュー
 
-REM スクリプトパスの設定
-set SCRIPT_PATH=%~dp0OneDriveStatusCheck.ps1
-set DEBUG_SCRIPT_PATH=%~dp0OneDriveDebugLog.ps1
-
-REM スクリプト存在チェック
-if not exist "%SCRIPT_PATH%" (
-    echo エラー: スクリプトファイルが見つかりません:
-    echo %SCRIPT_PATH%
-    echo.
-    echo 終了するには何かキーを押してください...
-    pause >nul
-    exit /b 1
-)
-
-REM メニュー表示
 :menu
 cls
-echo ================================================
-echo       OneDrive ステータスレポート作成ツール
-echo ================================================
+echo =====================================================
+echo   OneDrive運用ツール - メインメニュー
+echo =====================================================
 echo.
-echo [1] OneDriveステータスレポート作成
-echo [2] OneDrive接続診断ツール実行
-echo [3] 文字化け修正ツール起動
-echo [0] 終了
+echo  1. OneDriveステータスレポート作成
+echo  2. OneDrive接続診断ツール実行
+echo  3. 文字化け修正ツール起動
+echo  4. PowerShellエンコーディング設定
+echo  5. 認証キャッシュをクリア
+echo  0. 終了
 echo.
-echo ================================================
+echo =====================================================
 echo.
 
-set /p OPTION=選択してください (0-3): 
+set /p choice="選択してください (0-5): "
 
-if "%OPTION%"=="1" goto :run_report
-if "%OPTION%"=="2" goto :run_debug
-if "%OPTION%"=="3" goto :run_encoding_fix
-if "%OPTION%"=="0" goto :end
+if "%choice%"=="1" goto run_report
+if "%choice%"=="2" goto run_diagnostic
+if "%choice%"=="3" goto run_encoding_fixer
+if "%choice%"=="4" goto run_ps_encoding
+if "%choice%"=="5" goto clear_auth
+if "%choice%"=="0" goto end
 
-echo 無効な選択です。
-timeout /t 2 >nul
-goto :menu
+echo 無効な選択です。もう一度お試しください。
+timeout /t 2 > nul
+goto menu
 
 :run_report
 cls
-echo OneDriveステータスレポート作成を実行します...
+echo OneDriveステータスレポートを作成します...
 echo.
-
-REM PowerShellコマンドを実行（文字化け対策付き）
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; & '%SCRIPT_PATH%' }"
-
-echo.
-echo レポート作成が完了しました。
-echo.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0OneDriveStatusCheck.ps1"
 pause
-goto :menu
+goto menu
 
-:run_debug
+:run_diagnostic
 cls
 echo OneDrive接続診断ツールを実行します...
 echo.
-
-REM PowerShellコマンドを実行（文字化け対策付き）
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; & '%DEBUG_SCRIPT_PATH%' }"
-
-echo.
-echo 診断が完了しました。
-echo.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0診断\OneDriveDebugLog.ps1"
 pause
-goto :menu
+goto menu
 
-:run_encoding_fix
+:run_encoding_fixer
 cls
 echo 文字化け修正ツールを起動します...
 echo.
+call "%~dp0修正ツール\EncodingFixer.bat"
+goto menu
 
-call "%~dp0文字化け修正.bat"
+:run_ps_encoding
+cls
+echo PowerShellエンコーディング設定を実行します...
+echo.
+call "%~dp0PowerShellEncoding.bat"
+goto menu
 
+:clear_auth
+cls
+echo 認証キャッシュをクリアしています...
 echo.
-echo 文字化け修正ツールを終了しました。
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Disconnect-MgGraph -ErrorAction SilentlyContinue; Write-Host '認証キャッシュをクリアしました。' -ForegroundColor Green"
 echo.
+echo OneDriveステータスレポートを実行しますか？(Y/N)
+set /p run_report_choice=
+if /i "%run_report_choice%"=="Y" (
+    echo.
+    echo 認証キャッシュクリア後にレポートを実行します...
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0OneDriveStatusCheck.ps1" -ClearAuth
+)
 pause
-goto :menu
+goto menu
 
 :end
 echo.
-echo OneDriveステータスレポート作成ツールを終了します...
-timeout /t 2 >nul
-endlocal
+echo OneDrive運用ツールを終了します。
+echo.
+timeout /t 2 > nul
 exit /b 0
