@@ -1,20 +1,20 @@
-@echo off
+﻿@echo off
 setlocal enabledelayedexpansion
 chcp 932 > nul
 
-REM PowerShellスクリプトを管理者権限で実行するためのランチャー
-title OneDrive運用ツール 管理者実行ランチャー
+REM PowerShell繧ｹ繧ｯ繝ｪ繝励ヨ繧堤ｮ｡逅・・ｨｩ髯舌〒螳溯｡後☆繧九◆繧√・繝ｩ繝ｳ繝√Ε繝ｼ
+title OneDrive驕狗畑繝・・繝ｫ 邂｡逅・・ｮ溯｡後Λ繝ｳ繝√Ε繝ｼ
 color 17
 
-REM 管理者権限チェック
+REM 邂｡逅・・ｨｩ髯舌メ繧ｧ繝・け
 NET SESSION >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo ==========================================
-    echo   このツールは管理者権限で実行する必要があります。
-    echo   右クリックから「管理者として実行」を選択してください。
+    echo   縺薙・繝・・繝ｫ縺ｯ邂｡逅・・ｨｩ髯舌〒螳溯｡後☆繧句ｿ・ｦ√′縺ゅｊ縺ｾ縺吶・
+    echo   蜿ｳ繧ｯ繝ｪ繝・け縺九ｉ縲檎ｮ｡逅・・→縺励※螳溯｡後阪ｒ驕ｸ謚槭＠縺ｦ縺上□縺輔＞縲・
     echo ==========================================
     echo.
-    echo 終了するには何かキーを押してください...
+    echo 邨ゆｺ・☆繧九↓縺ｯ菴輔°繧ｭ繝ｼ繧呈款縺励※縺上□縺輔＞...
     pause >nul
     exit /b 1
 )
@@ -22,38 +22,38 @@ if %ERRORLEVEL% neq 0 (
 :menu
 cls
 echo ==========================================
-echo   OneDrive運用ツール 管理者実行ランチャー
+echo   OneDrive驕狗畑繝・・繝ｫ 邂｡逅・・ｮ溯｡後Λ繝ｳ繝√Ε繝ｼ
 echo ==========================================
 echo.
-echo 管理者権限で実行するスクリプトを選択してください:
+echo 邂｡逅・・ｨｩ髯舌〒螳溯｡後☆繧九せ繧ｯ繝ｪ繝励ヨ繧帝∈謚槭＠縺ｦ縺上□縺輔＞:
 echo.
-echo [1] OneDriveステータスレポート作成
-echo [2] OneDrive接続診断ツール実行
-echo [3] 文字化け修正ツール起動
-echo [0] 終了
+echo [1] OneDrive繧ｹ繝・・繧ｿ繧ｹ繝ｬ繝昴・繝井ｽ懈・
+echo [2] OneDrive謗･邯夊ｨｺ譁ｭ繝・・繝ｫ螳溯｡・
+echo [3] 譁・ｭ怜喧縺台ｿｮ豁｣繝・・繝ｫ襍ｷ蜍・
+echo [0] 邨ゆｺ・
 echo.
 echo ==========================================
 echo.
 
-set /p OPTION=選択してください (0-3): 
+set /p OPTION=驕ｸ謚槭＠縺ｦ縺上□縺輔＞ (0-3): 
 
 if "%OPTION%"=="1" goto :run_report
 if "%OPTION%"=="2" goto :run_debug 
 if "%OPTION%"=="3" goto :run_encoding_fix
 if "%OPTION%"=="0" goto :end
 
-echo 無効な選択です。
+echo 辟｡蜉ｹ縺ｪ驕ｸ謚槭〒縺吶・
 timeout /t 2 >nul
 goto :menu
 
 :run_report
 cls
-echo 管理者権限で OneDriveステータスレポート作成を実行します...
+echo 邂｡逅・・ｨｩ髯舌〒 OneDrive繧ｹ繝・・繧ｿ繧ｹ繝ｬ繝昴・繝井ｽ懈・繧貞ｮ溯｡後＠縺ｾ縺・..
 echo.
 
 set SCRIPT_PATH=%~dp0OneDriveStatusCheck.ps1
 
-REM 明示的にUTF-8エンコーディングを設定してスクリプト実行
+REM 譏守､ｺ逧・↓UTF-8繧ｨ繝ｳ繧ｳ繝ｼ繝・ぅ繝ｳ繧ｰ繧定ｨｭ螳壹＠縺ｦ繧ｹ繧ｯ繝ｪ繝励ヨ螳溯｡・
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "$OutputEncoding = [System.Text.Encoding]::UTF8; ^
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ^
@@ -62,19 +62,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     & '%SCRIPT_PATH%'"
 
 echo.
-echo レポート作成が完了しました。
+echo 繝ｬ繝昴・繝井ｽ懈・縺悟ｮ御ｺ・＠縺ｾ縺励◆縲・
 echo.
 pause
 goto :menu
 
 :run_debug
 cls
-echo 管理者権限で OneDrive接続診断ツールを実行します...
+echo 邂｡逅・・ｨｩ髯舌〒 OneDrive謗･邯夊ｨｺ譁ｭ繝・・繝ｫ繧貞ｮ溯｡後＠縺ｾ縺・..
 echo.
 
 set DEBUG_SCRIPT_PATH=%~dp0OneDriveDebugLog.ps1
 
-REM 明示的にUTF-8エンコーディングを設定してスクリプト実行
+REM 譏守､ｺ逧・↓UTF-8繧ｨ繝ｳ繧ｳ繝ｼ繝・ぅ繝ｳ繧ｰ繧定ｨｭ螳壹＠縺ｦ繧ｹ繧ｯ繝ｪ繝励ヨ螳溯｡・
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "$OutputEncoding = [System.Text.Encoding]::UTF8; ^
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ^
@@ -83,17 +83,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     & '%DEBUG_SCRIPT_PATH%'"
 
 echo.
-echo 診断が完了しました。
+echo 險ｺ譁ｭ縺悟ｮ御ｺ・＠縺ｾ縺励◆縲・
 echo.
 pause
 goto :menu
 
 :run_encoding_fix
 cls
-echo 管理者権限で 文字化け修正ツールを起動します...
+echo 邂｡逅・・ｨｩ髯舌〒 譁・ｭ怜喧縺台ｿｮ豁｣繝・・繝ｫ繧定ｵｷ蜍輔＠縺ｾ縺・..
 echo.
 
-REM 文字化け修正ツールも明示的にエンコーディングを指定して起動
+REM 譁・ｭ怜喧縺台ｿｮ豁｣繝・・繝ｫ繧よ・遉ｺ逧・↓繧ｨ繝ｳ繧ｳ繝ｼ繝・ぅ繝ｳ繧ｰ繧呈欠螳壹＠縺ｦ襍ｷ蜍・
 set GUI_TOOL=%~dp0CharacterEncodingFixer.ps1
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -104,14 +104,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     & '%GUI_TOOL%'"
 
 echo.
-echo 文字化け修正ツールを終了しました。
+echo 譁・ｭ怜喧縺台ｿｮ豁｣繝・・繝ｫ繧堤ｵゆｺ・＠縺ｾ縺励◆縲・
 echo.
 pause
 goto :menu
 
 :end
 echo.
-echo ツールを終了します...
+echo 繝・・繝ｫ繧堤ｵゆｺ・＠縺ｾ縺・..
 timeout /t 2 >nul
 endlocal
 exit /b 0

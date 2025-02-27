@@ -26,9 +26,10 @@ if not exist "%CURRENT_DIR%EncodingFixer.ps1" (
     )
 )
 
-:: Run PowerShell script
+
+:: Run PowerShell script directly with error messages suppressed
 echo Running PowerShell script...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -InputFormat Text -OutputFormat Text -File "%CURRENT_DIR%EncodingFixer.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& { . '%CURRENT_DIR%EncodingFixer.ps1' }" 2>nul
 if %ERRORLEVEL% neq 0 (
     echo.
     echo An error occurred. Error code: %ERRORLEVEL%

@@ -1,4 +1,4 @@
-#
+﻿#
 # 正しいUTF-8エンコードのEncodingFixer.ps1を作成するためのヘルパースクリプト
 # Helper script to create correctly UTF-8 encoded EncodingFixer.ps1
 #
