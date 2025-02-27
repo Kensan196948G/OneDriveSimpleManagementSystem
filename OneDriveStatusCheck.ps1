@@ -1,4 +1,4 @@
-﻿# OneDriveStatusCheck.ps1
+# OneDriveStatusCheck.ps1
 # OneDriveのステータスを確認し、HTML/CSV/JSファイルとして出力する
 # 
 # 更新履歴:

@@ -1,36 +1,45 @@
-﻿@echo off
+@echo off
 chcp 65001 > nul
 setlocal
 
 echo =====================================================
-echo   PowerShellスクリプト文字化け修正ツール
+echo   PowerShell Script Encoding Fix Tool
 echo =====================================================
 echo.
-echo スクリプトのエンコーディングをUTF-8に修正します
+echo This tool fixes script encoding to UTF-8
 echo.
 
-:: 現在のディレクトリを取得
+:: Get current directory
 set CURRENT_DIR=%~dp0
 
-:: EncodingFixer.ps1が存在するか確認
+:: Check if EncodingFixer.ps1 exists
 if not exist "%CURRENT_DIR%EncodingFixer.ps1" (
-    echo エンコーディング修正ツールが見つかりません。
-    echo CreateFixerScript.ps1を実行して修正ツールを作成します...
+    echo Encoding fix tool not found.
+    echo Running CreateFixerScript.ps1 to create the fix tool...
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CURRENT_DIR%CreateFixerScript.ps1"
     echo.
     if not exist "%CURRENT_DIR%EncodingFixer.ps1" (
-        echo 修正ツールの作成に失敗しました。
-        echo 手動で再設定してください。
+        echo Failed to create the fix tool.
+        echo Please reconfigure manually.
         pause
         exit /b 1
     )
 )
 
-:: PowerShellスクリプトを実行
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%CURRENT_DIR%EncodingFixer.ps1"
+:: Run PowerShell script
+echo Running PowerShell script...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -InputFormat Text -OutputFormat Text -File "%CURRENT_DIR%EncodingFixer.ps1"
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo An error occurred. Error code: %ERRORLEVEL%
+    echo.
+    pause
+    exit /b %ERRORLEVEL%
+)
 
 echo.
-echo 処理が完了しました。
+echo Process completed.
 echo.
 
+pause
 exit /b 0

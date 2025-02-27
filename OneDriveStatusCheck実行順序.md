@@ -1,4 +1,4 @@
-﻿# 📋 OneDriveStatusCheck 実行順序
+# 📋 OneDriveStatusCheck 実行順序
 
 ## 📝 概要
 OneDriveユーザーステータスと使用容量確認ツールの実行手順

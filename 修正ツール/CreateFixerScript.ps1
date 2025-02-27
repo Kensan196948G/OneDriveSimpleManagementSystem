@@ -1,5 +1,6 @@
-﻿#
+#
 # 正しいUTF-8エンコードのEncodingFixer.ps1を作成するためのヘルパースクリプト
+# Helper script to create correctly UTF-8 encoded EncodingFixer.ps1
 #
 
 # 正しいUTF-8エンコードのEncodingFixer.ps1スクリプトの内容
@@ -298,5 +299,7 @@ $outputPath = Join-Path -Path $PSScriptRoot -ChildPath "EncodingFixer.ps1"
 $utf8NoBomEncoding = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($outputPath, $scriptContent, $utf8NoBomEncoding)
 
+Write-Host "UTF-8 encoded EncodingFixer.ps1 created: $outputPath" -ForegroundColor Green
 Write-Host "UTF-8エンコードのEncodingFixer.ps1を作成しました: $outputPath" -ForegroundColor Green
+Write-Host "Please run this script." -ForegroundColor Yellow
 Write-Host "このスクリプトを実行してください。" -ForegroundColor Yellow

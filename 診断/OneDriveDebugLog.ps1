@@ -1,4 +1,4 @@
-﻿#
+#
 # OneDrive接続診断ツール
 # Microsoft Graph APIとの接続とOneDriveアクセス権限を診断します
 #

@@ -1,4 +1,4 @@
-﻿# CharacterEncodingFixer.ps1
+# CharacterEncodingFixer.ps1
 # PowerShellスクリプトの文字エンコーディングを修正するGUIツール
 # 
 # 更新履歴:
