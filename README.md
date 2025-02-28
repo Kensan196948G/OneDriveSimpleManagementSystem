@@ -1,4 +1,4 @@
-# 🔧 OneDrive運用ツール (OneDrive Simple Management System)
+# 🔧 OneDrive運用ツール
 
 ## 📋 概要
 OneDrive運用ツールは、Microsoft OneDriveの管理・監視を簡単に行うためのツールセットです。
