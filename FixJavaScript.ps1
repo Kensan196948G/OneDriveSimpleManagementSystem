@@ -1,3 +1,6 @@
+# PowerShellスクリプトは通常UTF-8 with BOMでエンコードします
+$ErrorActionPreference = "Stop"
+
 # JavaScriptテンプレートのエラーを修正するためのヘルパースクリプト
 
 # 指定されたJSファイルを読み込み、PowerShellの変数展開問題を修正して保存する
