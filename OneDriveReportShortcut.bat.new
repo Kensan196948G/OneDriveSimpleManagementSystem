@@ -1,0 +1,65 @@
+@echo off
+title OneDrive運用ツール メインメニュー
+
+:menu
+cls
+echo =====================================================
+echo   OneDrive Management Tool - Main Menu
+echo   OneDrive運用ツール - メインメニュー
+echo =====================================================
+echo.
+echo  1. Create OneDrive Status Report
+echo     (OneDriveステータスレポート作成)
+echo  2. Run OneDrive Diagnostic Tool
+echo     (OneDrive接続診断ツール実行)
+echo  3. Launch Encoding Fix Tool
+echo     (文字化け修正ツール起動)
+echo  0. Exit
+echo     (終了)
+echo.
+echo =====================================================
+echo.
+
+set choice=
+set /p choice="Select an option / 選択してください (0-3): "
+
+if "%choice%"=="1" goto run_report
+if "%choice%"=="2" goto run_diagnostic
+if "%choice%"=="3" goto run_encoding_fixer
+if "%choice%"=="0" goto end
+
+echo Invalid selection. Please try again.
+echo 無効な選択です。もう一度お試しください。
+timeout /t 2 > nul
+goto menu
+
+:run_report
+cls
+echo OneDriveステータスレポートを作成しています...
+echo 機能は現在開発中です。
+echo.
+pause
+goto menu
+
+:run_diagnostic
+cls
+echo OneDrive接続診断を実行しています...
+echo 機能は現在開発中です。
+echo.
+pause
+goto menu
+
+:run_encoding_fixer
+cls
+echo 文字化け修正ツールを起動しています...
+echo 機能は現在開発中です。
+echo.
+pause
+goto menu
+
+:end
+echo.
+echo OneDrive運用ツールを終了します。
+echo.
+pause
+exit /b 0

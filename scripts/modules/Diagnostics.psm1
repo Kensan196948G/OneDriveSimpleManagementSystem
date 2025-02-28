@@ -1,57 +1,79 @@
-# OneDrive接続診断モジュール
+# OneDrive診断モジュール
 # 文字コード: UTF-8 with BOM
 
 function Test-OneDriveConnection {
     Clear-Host
-    Write-Host "=====================================================
+    Write-Host "==========================================
   OneDrive接続診断
-=====================================================" -ForegroundColor Cyan
+==========================================" -ForegroundColor Cyan
     
-    try {
-        # インターネット接続の確認
-        Write-Host "インターネット接続を確認しています..." -NoNewline
-        if (Test-Connection -ComputerName www.microsoft.com -Count 2 -Quiet) {
-            Write-Host "OK" -ForegroundColor Green
-        } else {
-            Write-Host "失敗" -ForegroundColor Red
-            Write-Host "インターネット接続に問題があります。ネットワーク設定を確認してください。" -ForegroundColor Yellow
-        }
-        
-        # OneDriveサービス接続の確認
-        Write-Host "OneDriveサービスへの接続を確認しています..." -NoNewline
-        if (Test-Connection -ComputerName onedrive.live.com -Count 2 -Quiet) {
-            Write-Host "OK" -ForegroundColor Green
-        } else {
-            Write-Host "失敗" -ForegroundColor Red
-            Write-Host "OneDriveサービスに接続できません。" -ForegroundColor Yellow
-        }
-        
-        # OneDriveプロセスの確認
-        Write-Host "OneDriveプロセスの状態を確認しています..." -NoNewline
-        $oneDriveProcess = Get-Process -Name "OneDrive" -ErrorAction SilentlyContinue
-        if ($oneDriveProcess) {
-            Write-Host "実行中" -ForegroundColor Green
-        } else {
-            Write-Host "停止中" -ForegroundColor Red
-            Write-Host "OneDriveが実行されていません。手動で起動してください。" -ForegroundColor Yellow
-        }
-        
-        # OneDrive設定の確認
-        Write-Host "`nOneDrive診断情報:" -ForegroundColor Cyan
-        Write-Host "----------------------------------------"
-        $oneDrivePath = [System.Environment]::GetFolderPath("UserProfile") + "\OneDrive"
-        Write-Host "OneDriveフォルダパス: $oneDrivePath"
-        
-        # 現在のユーザー名を表示
-        $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-        Write-Host "現在のユーザー: $currentUser"
-        
-    } catch {
-        Write-Host "エラーが発生しました: $_" -ForegroundColor Red
+    Write-Host "OneDriveの接続状態を診断しています..." -ForegroundColor Yellow
+    
+    # インターネット接続の確認
+    Write-Host "`n[1/4] インターネット接続を確認しています..." -ForegroundColor Yellow
+    $internetTest = Test-Connection -ComputerName "www.microsoft.com" -Count 2 -Quiet
+    if ($internetTest) {
+        Write-Host "インターネット接続: 正常" -ForegroundColor Green
+    } else {
+        Write-Host "インターネット接続: 問題あり - ネットワーク設定を確認してください" -ForegroundColor Red
     }
     
-    Write-Host "`n任意のキーを押して続行してください..." -ForegroundColor Yellow
-    $null = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    # OneDriveプロセスの確認
+    Write-Host "`n[2/4] OneDriveプロセスを確認しています..." -ForegroundColor Yellow
+    $oneDriveProcess = Get-Process -Name "OneDrive" -ErrorAction SilentlyContinue
+    if ($oneDriveProcess) {
+        Write-Host "OneDriveプロセス: 実行中" -ForegroundColor Green
+    } else {
+        Write-Host "OneDriveプロセス: 停止中 - OneDriveを起動してください" -ForegroundColor Red
+    }
+    
+    # OneDriveサービスエンドポイントの確認
+    Write-Host "`n[3/4] OneDriveサービスへの接続を確認しています..." -ForegroundColor Yellow
+    $endpoints = @(
+        "onedrive.live.com",
+        "login.live.com",
+        "oneclient.sfx.ms"
+    )
+    
+    $allEndpointsAccessible = $true
+    foreach ($endpoint in $endpoints) {
+        try {
+            $result = Test-NetConnection -ComputerName $endpoint -Port 443 -WarningAction SilentlyContinue
+            if ($result.TcpTestSucceeded) {
+                Write-Host "$endpoint: 接続成功" -ForegroundColor Green
+            } else {
+                Write-Host "$endpoint: 接続失敗" -ForegroundColor Red
+                $allEndpointsAccessible = $false
+            }
+        } catch {
+            Write-Host "$endpoint: 接続テスト中にエラーが発生しました" -ForegroundColor Red
+            $allEndpointsAccessible = $false
+        }
+    }
+    
+    # OneDrive認証の確認
+    Write-Host "`n[4/4] OneDrive認証状態を確認しています..." -ForegroundColor Yellow
+    $oneDrivePath = [System.Environment]::GetEnvironmentVariable("OneDrive", "User")
+    if (Test-Path $oneDrivePath) {
+        Write-Host "OneDriveフォルダ: アクセス可能" -ForegroundColor Green
+    } else {
+        Write-Host "OneDriveフォルダ: アクセスできません - サインインが必要な可能性があります" -ForegroundColor Red
+    }
+    
+    # 診断結果のサマリー
+    Write-Host "`n診断結果サマリー:" -ForegroundColor Cyan
+    if ($internetTest -and $oneDriveProcess -and $allEndpointsAccessible -and (Test-Path $oneDrivePath)) {
+        Write-Host "OneDriveは正常に動作しているようです。" -ForegroundColor Green
+    } else {
+        Write-Host "OneDriveに問題が見つかりました。以下の対処を試してください:" -ForegroundColor Yellow
+        Write-Host "1. OneDriveアプリケーションを再起動する" -ForegroundColor Yellow
+        Write-Host "2. Microsoftアカウントに再サインインする" -ForegroundColor Yellow
+        Write-Host "3. インターネット接続を確認する" -ForegroundColor Yellow
+        Write-Host "4. OneDriveアプリケーションを再インストールする" -ForegroundColor Yellow
+    }
+    
+    Write-Host "`n何かキーを押すとメインメニューに戻ります..."
+    [void][System.Console]::ReadKey($true)
 }
 
 Export-ModuleMember -Function Test-OneDriveConnection

@@ -43,7 +43,24 @@ cls
 echo Creating OneDrive Status Report...
 echo OneDriveステータスレポートを作成します...
 echo.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0OneDriveStatusCheck.ps1"
+if exist "%~dp0OneDriveStatusCheck.ps1" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0OneDriveStatusCheck.ps1"
+) else (
+    echo =====================================================
+    echo   OneDrive Status Report
+    echo   OneDriveステータスレポート
+    echo =====================================================
+    echo.
+    echo This tool displays the OneDrive usage status.
+    echo このツールはOneDriveの使用状況を表示します。
+    echo.
+    echo [Note] This is a placeholder file. Please implement the actual OneDrive reporting logic.
+    echo [注意] これはプレースホルダーファイルです。実際のOneDriveレポート機能を実装してください。
+    echo.
+    echo =====================================================
+    echo.
+    pause
+)
 pause
 goto menu
 

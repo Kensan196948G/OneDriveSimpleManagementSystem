@@ -1,6 +1,19 @@
 # OneDrive管理ツール メインスクリプト
 # 文字コード: UTF-8 with BOM
 
+# スクリプトのエンコーディングを確認
+$scriptContent = Get-Content -Path $MyInvocation.MyCommand.Path -Raw
+$encoding = [System.Text.Encoding]::UTF8
+$preamble = $encoding.GetPreamble()
+$hasBOM = $scriptContent.Length -ge $preamble.Length -and 
+          ($scriptContent.Substring(0, $preamble.Length) -eq $preamble)
+
+if (-not $hasBOM) {
+    Write-Host "警告: このスクリプトはUTF-8 with BOMでエンコードされていません。文字化けが発生する可能性があります。" -ForegroundColor Red
+    Write-Host "scripts\modules\EncodingFix.psm1を使用して修正してください。" -ForegroundColor Yellow
+    Start-Sleep -Seconds 3
+}
+
 # スクリプトの実行ポリシーを設定
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
@@ -9,9 +22,24 @@ $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $modulePath = Join-Path -Path $scriptPath -ChildPath "modules"
 
 # モジュールをインポート
-Import-Module "$modulePath\StatusReport.psm1" -ErrorAction SilentlyContinue
-Import-Module "$modulePath\Diagnostics.psm1" -ErrorAction SilentlyContinue
-Import-Module "$modulePath\EncodingFix.psm1" -ErrorAction SilentlyContinue
+if (-not (Test-Path "$modulePath\StatusReport.psm1")) {
+    Write-Host "エラー: モジュールファイルが見つかりません: $modulePath\StatusReport.psm1" -ForegroundColor Red
+    exit 1
+}
+
+if (-not (Test-Path "$modulePath\Diagnostics.psm1")) {
+    Write-Host "エラー: モジュールファイルが見つかりません: $modulePath\Diagnostics.psm1" -ForegroundColor Red
+    exit 1
+}
+
+if (-not (Test-Path "$modulePath\EncodingFix.psm1")) {
+    Write-Host "エラー: モジュールファイルが見つかりません: $modulePath\EncodingFix.psm1" -ForegroundColor Red
+    exit 1
+}
+
+Import-Module "$modulePath\StatusReport.psm1" -Force
+Import-Module "$modulePath\Diagnostics.psm1" -Force
+Import-Module "$modulePath\EncodingFix.psm1" -Force
 
 # メインメニューを表示
 function Show-MainMenu {

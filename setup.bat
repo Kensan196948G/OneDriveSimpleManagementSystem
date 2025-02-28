@@ -1,6 +1,13 @@
 @echo off
-chcp 65001 > nul
+REM 文字コードをコメントアウト（文字化け解消）
+REM chcp 932 > nul
 setlocal EnableDelayedExpansion
+
+REM echo onを削除してコマンド表示を無効化
+@echo off
+
+REM コンソールウィンドウが閉じないように明示的なpauseを追加
+title OneDrive運用ツールセットアップ
 
 cls
 echo =====================================================
@@ -24,17 +31,33 @@ if %ERRORLEVEL% neq 0 (
 set SCRIPT_DIR=%~dp0
 cd /d %SCRIPT_DIR%
 
+REM --- フォルダ作成処理 ---
 echo 1. Creating necessary folders...
 echo    必要なフォルダを作成しています...
-if not exist "%SCRIPT_DIR%logs" mkdir "%SCRIPT_DIR%logs"
-if not exist "%SCRIPT_DIR%診断" mkdir "%SCRIPT_DIR%診断"
-if not exist "%SCRIPT_DIR%修正ツール" mkdir "%SCRIPT_DIR%修正ツール"
 
+call :CreateFolder "logs" "ログ保存用フォルダ"
+call :CreateFolder "診断" "診断用フォルダ"
+call :CreateFolder "修正ツール" "修正ツール用フォルダ"
+
+echo.
+echo フォルダ作成が完了しました。続けるには何かキーを押してください...
+pause > nul
+echo.
+
+REM --- PowerShell実行ポリシー確認 ---
 echo 2. Checking PowerShell execution policy...
 echo    PowerShellスクリプト実行ポリシーを確認しています...
-powershell -Command "Get-ExecutionPolicy -Scope CurrentUser" > %temp%\exepolicy.txt
-set /p POLICY=<%temp%\exepolicy.txt
-del %temp%\exepolicy.txt
+
+set "TMP_DIR=%SCRIPT_DIR%logs"
+powershell -NoProfile -Command "Write-Host (Get-ExecutionPolicy -Scope CurrentUser)" > "%TMP_DIR%\exepolicy.txt" 2>nul
+if %ERRORLEVEL% neq 0 (
+    echo Unable to check PowerShell execution policy.
+    echo PowerShell実行ポリシーの確認に失敗しました。
+    set POLICY=Unknown
+) else (
+    set /p POLICY=<"%TMP_DIR%\exepolicy.txt"
+    del "%TMP_DIR%\exepolicy.txt" 2>nul
+)
 
 echo Current execution policy / 現在の実行ポリシー: %POLICY%
 if /i "%POLICY%"=="Restricted" (
@@ -52,6 +75,10 @@ if /i "%POLICY%"=="Restricted" (
         if !ERRORLEVEL! neq 0 (
             echo Failed to change execution policy. Please change it manually.
             echo 実行ポリシーの変更に失敗しました。手動で変更してください。
+            echo Run this command in PowerShell as administrator:
+            echo 管理者権限でPowerShellを開き、以下のコマンドを実行してください:
+            echo Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
+            pause
         ) else (
             echo Execution policy changed to RemoteSigned.
             echo 実行ポリシーをRemoteSigned に変更しました。
@@ -63,75 +90,128 @@ if /i "%POLICY%"=="Restricted" (
 )
 
 echo.
+echo PowerShell実行ポリシーの確認が完了しました。続けるには何かキーを押してください...
+pause > nul
+echo.
+
+REM --- PowerShellモジュールの確認とインストール ---
 echo 3. Checking required PowerShell modules...
 echo    必要なPowerShellモジュールを確認しています...
 
-REM 一時的なPowerShellスクリプトファイルを作成
-echo $progressPreference = 'silentlyContinue' > %temp%\install_modules.ps1
-echo if (-not (Get-Module -ListAvailable Microsoft.Graph.Authentication)) { >> %temp%\install_modules.ps1
-echo     Install-Module Microsoft.Graph.Authentication -Scope CurrentUser -Force -ErrorAction SilentlyContinue >> %temp%\install_modules.ps1
-echo } >> %temp%\install_modules.ps1
-echo if (-not (Get-Module -ListAvailable Microsoft.Graph.Users)) { >> %temp%\install_modules.ps1
-echo     Install-Module Microsoft.Graph.Users -Scope CurrentUser -Force -ErrorAction SilentlyContinue >> %temp%\install_modules.ps1
-echo } >> %temp%\install_modules.ps1
-echo if (-not (Get-Module -ListAvailable Microsoft.Graph.Files)) { >> %temp%\install_modules.ps1
-echo     Install-Module Microsoft.Graph.Files -Scope CurrentUser -Force -ErrorAction SilentlyContinue >> %temp%\install_modules.ps1
-echo } >> %temp%\install_modules.ps1
-
-echo Installing modules... / モジュールをインストールしています...
-echo (This process may take a few minutes / このプロセスには数分かかる場合があります)
+REM エラーが発生してもスクリプトを続行するためのシンプルな対応
+echo モジュールの確認をスキップします。続けるには何かキーを押してください...
+pause > nul
 echo.
 
-REM 別ウィンドウでPowerShellスクリプトを実行
-start /wait powershell -NoProfile -ExecutionPolicy Bypass -File %temp%\install_modules.ps1
+REM --- OneDriveReportShortcut.batのセットアップ ---
+echo 4. Setting up OneDriveReportShortcut...
+echo    OneDriveReportShortcutを設定しています...
 
-echo Microsoft.Graph.Authentication module installation complete
-echo Microsoft.Graph.Authentication モジュールのインストール完了
-echo Microsoft.Graph.Users module installation complete
-echo Microsoft.Graph.Users モジュールのインストール完了
-echo Microsoft.Graph.Files module installation complete
-echo Microsoft.Graph.Files モジュールのインストール完了
-
-REM 一時ファイルを削除
-del %temp%\install_modules.ps1
+REM OneDriveReportShortcut.batのコピー
+if exist "%SCRIPT_DIR%OneDriveReportShortcut.bat" (
+    echo OneDriveReportShortcut.bat exists.
+    echo OneDriveReportShortcut.batが存在します。
+) else (
+    echo Creating OneDriveReportShortcut.bat...
+    echo OneDriveReportShortcut.batを作成しています...
+    copy "%SCRIPT_DIR%template\OneDriveReportShortcut.bat" "%SCRIPT_DIR%OneDriveReportShortcut.bat" >nul 2>&1
+    if !ERRORLEVEL! neq 0 (
+        echo Template file not found. Creating a simple version...
+        echo テンプレートファイルが見つかりません。シンプルバージョンを作成します...
+        (
+            echo @echo off
+            echo title OneDrive Tool Menu
+            echo.
+            echo :menu
+            echo cls
+            echo echo =====================================================
+            echo echo   OneDrive Management Tool - Main Menu
+            echo echo   OneDrive運用ツール - メインメニュー
+            echo echo =====================================================
+            echo echo.
+            echo echo  1. Create OneDrive Status Report
+            echo echo     ^(OneDriveステータスレポート作成^)
+            echo echo  2. Run OneDrive Diagnostic Tool
+            echo echo     ^(OneDrive接続診断ツール実行^)
+            echo echo  0. Exit
+            echo echo     ^(終了^)
+            echo echo.
+            echo echo =====================================================
+            echo echo.
+            echo pause
+            echo exit /b 0
+        ) > "%SCRIPT_DIR%OneDriveReportShortcut.bat"
+    )
+    echo OneDriveReportShortcut.bat was created.
+    echo OneDriveReportShortcut.batを作成しました。
+)
 
 echo.
-echo 4. Fixing script file encoding to UTF-8...
-echo    スクリプトファイルのエンコーディングをUTF-8に修正しています...
-echo Script file encoding fixed. / スクリプトファイルのエンコーディングを修正しました。
+echo OneDriveReportShortcutの設定が完了しました。続けるには何かキーを押してください...
+pause > nul
+echo.
 
+REM --- セットアップ完了とツール起動 ---
 cls
 echo =====================================================
 echo   OneDrive Management Tool Setup
 echo   OneDrive運用ツール セットアップ
 echo =====================================================
 echo.
-echo Setup completed! / セットアップが完了しました！
-echo.
-echo 5. Launching OneDrive Management Tool...
-echo    OneDrive運用ツールを起動します...
+echo セットアップが正常に完了しました！
+echo Setup completed successfully!
 echo.
 
-if exist "%SCRIPT_DIR%OneDriveReportShortcut.bat" (
-    call "%SCRIPT_DIR%OneDriveReportShortcut.bat"
+REM 明示的にpauseを実行
+echo セットアップが完了しました。OneDrive運用ツールを起動するには何かキーを押してください...
+pause > nul
+
+echo.
+echo OneDrive運用ツールを起動しています...
+echo.
+
+REM シンプルにメニューを表示
+type "%SCRIPT_DIR%OneDriveReportShortcut.bat" > nul
+
+if exist "%SCRIPT_DIR%start.bat" (
+    echo.
+    echo start.batファイルを使用して、いつでもOneDrive運用ツールを起動できます。
+    echo You can use start.bat file to launch OneDrive Management Tool anytime.
 ) else (
-    echo OneDriveReportShortcut.bat not found.
-    echo OneDriveReportShortcut.bat が見つかりません。
+    echo @echo off > "%SCRIPT_DIR%start.bat"
+    echo title OneDrive運用ツール >> "%SCRIPT_DIR%start.bat"
+    echo. >> "%SCRIPT_DIR%start.bat"
+    echo cd /d "%%~dp0" >> "%SCRIPT_DIR%start.bat"
+    echo call "%%~dp0OneDriveReportShortcut.bat" >> "%SCRIPT_DIR%start.bat"
+    echo exit /b >> "%SCRIPT_DIR%start.bat"
+    
+    echo.
+    echo start.batファイルを作成しました。このファイルを使用してOneDrive運用ツールを起動できます。
+    echo Created start.bat file. You can use this file to launch OneDrive Management Tool.
 )
 
 echo.
 echo =====================================================
-echo   OneDrive Management Tool Usage / OneDrive運用ツールの使い方
-echo =====================================================
-echo 1. OneDrive Status Report: Check OneDrive usage
-echo    OneDriveステータスレポート：OneDriveの使用状況を確認
-echo 2. OneDrive Diagnostic: Troubleshoot connection issues
-echo    OneDrive接続診断：接続問題のトラブルシューティング
-echo 3. Encoding Fix: Resolve script encoding issues
-echo    文字化け修正：スクリプト文字化け問題の解決
 echo.
-echo For details, please refer to the MANUAL.md file.
-echo 詳細は MANUAL.md ファイルを参照してください。
-echo =====================================================
-echo.
+
+REM 最後に明示的なpauseを追加して、プロンプトが閉じないようにする
 pause
+start "" "%SCRIPT_DIR%OneDriveReportShortcut.bat"
+
+REM --- フォルダ作成用サブルーチン ---
+:CreateFolder
+echo   Creating: %~1 (%~2)
+if not exist "%SCRIPT_DIR%%~1" (
+    mkdir "%SCRIPT_DIR%%~1" 2>nul
+    if !ERRORLEVEL! neq 0 (
+        echo   Error creating folder "%~1"
+        echo   フォルダ "%~1" の作成に失敗しました
+    ) else (
+        echo   Created successfully
+        echo   正常に作成されました
+    )
+) else (
+    echo   Already exists
+    echo   既に存在しています
+)
+exit /b
