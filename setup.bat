@@ -1,6 +1,6 @@
 @echo off
-REM 文字コードをコメントアウト（文字化け解消）
-REM chcp 932 > nul
+REM 文字コードをUTF-8に設定（文字化け解消）
+chcp 65001 > nul
 setlocal EnableDelayedExpansion
 
 REM echo onを削除してコマンド表示を無効化
@@ -160,6 +160,13 @@ echo =====================================================
 echo.
 echo セットアップが正常に完了しました！
 echo Setup completed successfully!
+echo.
+
+REM 文字化けに関する情報を表示
+echo 注意: 文字化けが発生した場合は、以下のファイルを使用してください:
+echo  - コマンドプロンプト: fix-encoding-cmd.bat
+echo  - PowerShell: fix-encoding-ps1.ps1
+echo 詳細は README-encoding.md をご覧ください。
 echo.
 
 REM 明示的にpauseを実行
