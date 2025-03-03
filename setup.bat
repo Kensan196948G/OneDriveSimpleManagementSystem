@@ -46,20 +46,20 @@ echo.
 
 REM --- PowerShell実行ポリシー確認 ---
 echo 2. Checking PowerShell execution policy...
-echo    PowerShellスクリプト実行ポリシーを確認しています...
+echo "   PowerShellスクリプト実行ポリシーを確認しています..."
 
 set "TMP_DIR=%SCRIPT_DIR%logs"
 powershell -NoProfile -Command "Write-Host (Get-ExecutionPolicy -Scope CurrentUser)" > "%TMP_DIR%\exepolicy.txt" 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo Unable to check PowerShell execution policy.
-    echo PowerShell実行ポリシーの確認に失敗しました。
+    echo "Unable to check PowerShell execution policy."
+    echo "PowerShell実行ポリシーの確認に失敗しました。"
     set POLICY=Unknown
 ) else (
     set /p POLICY=<"%TMP_DIR%\exepolicy.txt"
     del "%TMP_DIR%\exepolicy.txt" 2>nul
 )
 
-echo Current execution policy / 現在の実行ポリシー: %POLICY%
+echo "Current execution policy / 現在の実行ポリシー: %POLICY%"
 if /i "%POLICY%"=="Restricted" (
     echo Warning: PowerShell execution policy is restricted.
     echo 警告: PowerShellの実行ポリシーが制限されています。
@@ -96,10 +96,10 @@ echo.
 
 REM --- PowerShellモジュールの確認とインストール ---
 echo 3. Checking required PowerShell modules...
-echo    必要なPowerShellモジュールを確認しています...
+echo "   必要なPowerShellモジュールを確認しています..."
 
 REM エラーが発生してもスクリプトを続行するためのシンプルな対応
-echo モジュールの確認をスキップします。続けるには何かキーを押してください...
+echo "モジュールの確認をスキップします。続けるには何かキーを押してください..."
 pause > nul
 echo.
 
