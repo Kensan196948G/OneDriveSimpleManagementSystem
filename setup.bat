@@ -185,16 +185,50 @@ if exist "%SCRIPT_DIR%start.bat" (
     echo start.batファイルを使用して、いつでもOneDrive運用ツールを起動できます。
     echo You can use start.bat file to launch OneDrive Management Tool anytime.
 ) else (
-    echo @echo off > "%SCRIPT_DIR%start.bat"
-    echo title OneDrive運用ツール >> "%SCRIPT_DIR%start.bat"
-    echo. >> "%SCRIPT_DIR%start.bat"
-    echo cd /d "%%~dp0" >> "%SCRIPT_DIR%start.bat"
-    echo call "%%~dp0OneDriveReportShortcut.bat" >> "%SCRIPT_DIR%start.bat"
-    echo exit /b >> "%SCRIPT_DIR%start.bat"
+    echo 強化版 start.bat ファイルを作成しています...
+    (
+        echo @echo off
+        echo REM 文字コードをUTF-8に設定（文字化け解消）
+        echo chcp 65001 ^> nul
+        echo setlocal EnableDelayedExpansion
+        echo.
+        echo title OneDrive運用ツール
+        echo.
+        echo REM 現在のディレクトリをスクリプトのある場所に設定
+        echo cd /d "%%~dp0"
+        echo.
+        echo REM 必要なファイルの存在確認
+        echo if not exist "%%~dp0OneDriveReportShortcut.bat" ^(
+        echo     echo エラー: OneDriveReportShortcut.bat が見つかりません。
+        echo     echo setup.bat を実行して必要なファイルをセットアップしてください。
+        echo     echo.
+        echo     pause
+        echo     exit /b 1
+        echo ^)
+        echo.
+        echo REM 文字化け問題の可能性を通知
+        echo echo OneDrive運用ツールを起動しています...
+        echo echo （文字化けが発生した場合は fix-encoding-cmd.bat を実行してください）
+        echo echo.
+        echo.
+        echo REM メインツールを呼び出し
+        echo call "%%~dp0OneDriveReportShortcut.bat"
+        echo.
+        echo REM 終了コードを保持
+        echo set EXIT_CODE=%%ERRORLEVEL%%
+        echo.
+        echo REM エラーがあれば通知
+        echo if not %%EXIT_CODE%% == 0 ^(
+        echo     echo.
+        echo     echo ツールが終了コード %%EXIT_CODE%% で終了しました。
+        echo ^)
+        echo.
+        echo exit /b %%EXIT_CODE%%
+    ) > "%SCRIPT_DIR%start.bat"
     
     echo.
-    echo start.batファイルを作成しました。このファイルを使用してOneDrive運用ツールを起動できます。
-    echo Created start.bat file. You can use this file to launch OneDrive Management Tool.
+    echo 強化版 start.bat ファイルを作成しました。このファイルを使用してOneDrive運用ツールを起動できます。
+    echo Created enhanced start.bat file. You can use this file to launch OneDrive Management Tool.
 )
 
 echo.
